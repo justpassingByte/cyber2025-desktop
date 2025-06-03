@@ -1,0 +1,73 @@
+{
+  "name": "cybercafe-admin-server",
+  "version": "1.0.0",
+  "description": "Cybercafe Management Server Application",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "concurrently \"npm run dev:webpack\" \"npm run dev:electron\"",
+    "dev:webpack": "webpack --config webpack.config.js --watch",
+    "dev:electron": "wait-on dist/main/main.js dist/renderer/index.html && electron .",
+    "dev-only": "electron .",
+    "build": "webpack --config webpack.config.js --mode production && electron-builder",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "keywords": [
+    "cybercafe",
+    "management",
+    "admin",
+    "server"
+  ],
+  "author": "",
+  "license": "ISC",
+  "build": {
+    "appId": "com.cybercafe.admin",
+    "productName": "Cybercafe Admin Server",
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  },
+  "dependencies": {
+    "electron-is-dev": "^2.0.0",
+    "framer-motion": "^11.1.23",
+    "lucide-react": "^0.511.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-hook-form": "^7.54.1",
+    "react-router-dom": "^7.6.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.17",
+    "@types/react": "^18.2.64",
+    "@types/react-dom": "^18.2.21",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^8.2.2",
+    "css-loader": "^6.10.0",
+    "electron": "^30.0.6",
+    "electron-builder": "^24.12.0",
+    "electron-webpack": "^2.8.2",
+    "html-webpack-plugin": "^5.6.0",
+    "postcss": "^8.4.38",
+    "postcss-loader": "^8.1.1",
+    "style-loader": "^3.3.4",
+    "tailwindcss": "^3.4.1",
+    "tailwindcss-animate": "^1.0.7",
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.4.5",
+    "wait-on": "^7.2.0",
+    "webpack": "^5.99.9",
+    "webpack-cli": "^6.0.1",
+    "webpack-dev-server": "^5.2.1"
+  }
+}
