@@ -1,118 +1,74 @@
 import React, { ReactNode } from 'react';
-import { motion } from 'framer-motion';
-import { Card } from './Card';
-
-export type StatusType = 'online' | 'offline' | 'warning' | 'success' | 'info';
+import { Card, CardContent } from './Card';
 
 export interface StatusCardProps {
   title: string;
-  status: StatusType;
-  value: string | number;
+  value: number;
   icon: ReactNode;
-  label?: string;
+  status: 'online' | 'offline' | 'warning';
   className?: string;
 }
 
 export const StatusCard: React.FC<StatusCardProps> = ({
   title,
-  status,
   value,
   icon,
-  label,
-  className = ''
+  status,
+  className = '',
 }) => {
-  // Define status styles based on status type
-  const getStatusStyles = () => {
+  const getStatusColor = () => {
     switch (status) {
       case 'online':
-      case 'success':
         return {
-          iconBg: 'bg-green-500/10',
-          iconColor: 'text-green-500',
-          badgeBg: 'bg-green-500/10',
-          badgeColor: 'text-green-500',
-          animate: false
+          bg: 'bg-green-500',
+          text: 'text-green-500',
+          bgLight: 'bg-green-50',
+          border: 'border-green-200',
         };
       case 'offline':
         return {
-          iconBg: 'bg-red-500/10',
-          iconColor: 'text-red-500',
-          badgeBg: 'bg-red-500/10',
-          badgeColor: 'text-red-500',
-          animate: false
+          bg: 'bg-red-500',
+          text: 'text-red-500',
+          bgLight: 'bg-red-50',
+          border: 'border-red-200',
         };
       case 'warning':
         return {
-          iconBg: 'bg-amber-500/10',
-          iconColor: 'text-amber-500',
-          badgeBg: 'bg-amber-500/10',
-          badgeColor: 'text-amber-500',
-          animate: true
-        };
-      case 'info':
-        return {
-          iconBg: 'bg-blue-500/10',
-          iconColor: 'text-blue-500',
-          badgeBg: 'bg-blue-500/10',
-          badgeColor: 'text-blue-500',
-          animate: false
+          bg: 'bg-yellow-500',
+          text: 'text-yellow-500',
+          bgLight: 'bg-yellow-50',
+          border: 'border-yellow-200',
         };
       default:
         return {
-          iconBg: 'bg-primary/10',
-          iconColor: 'text-primary',
-          badgeBg: 'bg-primary/10',
-          badgeColor: 'text-primary',
-          animate: false
+          bg: 'bg-gray-500',
+          text: 'text-gray-500',
+          bgLight: 'bg-gray-50',
+          border: 'border-gray-200',
         };
     }
   };
 
-  const styles = getStatusStyles();
-  const displayLabel = label || status.toUpperCase();
+  const { bg, text, bgLight, border } = getStatusColor();
 
   return (
-    <Card className={className}>
-      <div className="p-6">
-        <div className="flex justify-between items-start mb-4">
-          <motion.h3
-            initial={{ opacity: 0, x: -10 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.3 }}
-            className="text-muted-foreground font-medium text-sm"
-          >
-            {title}
-          </motion.h3>
-
-          <motion.div 
-            className={`p-2 rounded-lg ${styles.iconBg} ${styles.iconColor}`}
-            animate={styles.animate ? { scale: [1, 1.05, 1] } : undefined}
-            transition={styles.animate ? { repeat: Infinity, duration: 2 } : undefined}
-          >
-            {icon}
-          </motion.div>
+    <Card className={`${border} ${bgLight} ${className}`}>
+      <CardContent className="p-6">
+        <div className="flex items-center">
+          <div className={`w-10 h-10 ${bg} opacity-20 rounded-full flex items-center justify-center mr-4`}>
+            <div className={text}>
+              {icon}
+            </div>
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold">{title}</h3>
+            <div className="flex items-center mt-1">
+              <span className={`w-2 h-2 ${bg} rounded-full mr-2`}></span>
+              <p className={`text-2xl font-bold`}>{value}</p>
+            </div>
+          </div>
         </div>
-
-        <div className="flex items-center space-x-2">
-          <motion.span
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-            className="text-2xl font-bold text-foreground"
-          >
-            {value}
-          </motion.span>
-
-          <motion.div
-            initial={{ opacity: 0, scale: 0.5 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.3, delay: 0.1 }}
-            className={`px-2 py-1 rounded text-xs font-medium ${styles.badgeBg} ${styles.badgeColor}`}
-          >
-            {displayLabel}
-          </motion.div>
-        </div>
-      </div>
+      </CardContent>
     </Card>
   );
 }; 

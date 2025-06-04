@@ -1,26 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Users, 
-  DollarSign, 
-  Monitor, 
-  TrendingUp, 
-  Clock, 
-  AlertTriangle, 
-  CheckCircle,
+  Monitor,
   Settings,
-  Home,
-  UserRound,
-  Coffee,
   Gamepad2,
-  LayoutDashboard,
   LogOut,
-  ChevronLeft,
-  ChevronRight
+  UtensilsCrossed,
+  BarChart3,
+  Bell,
+  X,
+  Menu,
+  LucideIcon
 } from 'lucide-react';
-import { ThemeProvider } from './components/ThemeProvider';
-import ThemeSwitcher from './components/ThemeSwitcher';
+import { Badge } from './components/ui/badge';
+import { Avatar, AvatarFallback } from './components/ui/avatar';
+import { Button } from './components/ui/button';
 
 // Import pages
 import Dashboard from './pages/dashboard/Dashboard';
@@ -29,6 +25,63 @@ import RoomPage from './pages/room/Room';
 import GamesPage from './pages/games/Games';
 import CustomersPage from './pages/customers/Customers';
 import FoodPage from './pages/foods/Foods';
+
+// Error Boundary Component
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("Component Error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-6 text-red-600 bg-red-50 rounded-lg border border-red-200 m-6">
+          <h1 className="text-xl font-bold mb-2">Something went wrong</h1>
+          <p className="mb-4">{this.state.error?.message || "Unknown error"}</p>
+          <pre className="bg-white p-4 rounded overflow-auto max-h-[400px] text-xs">
+            {this.state.error?.stack}
+          </pre>
+          <button 
+            className="mt-4 px-4 py-2 bg-red-600 text-white rounded-md"
+            onClick={() => this.setState({ hasError: false, error: null })}
+          >
+            Try again
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+// Page wrapper to catch and log errors
+const PageErrorWrapper = ({ component: Component }: { component: React.ComponentType }) => {
+  try {
+    console.log(`Rendering component:`, Component.name || 'Unknown');
+    return <Component />;
+  } catch (error) {
+    console.error(`Error rendering component:`, error);
+    return (
+      <div className="p-6 text-red-600 bg-red-50 rounded-lg border border-red-200">
+        <h1 className="text-xl font-bold mb-2">Error rendering page</h1>
+        <p>{error instanceof Error ? error.message : String(error)}</p>
+      </div>
+    );
+  }
+};
 
 const pageVariants = {
   initial: {
@@ -52,248 +105,188 @@ const pageVariants = {
   }
 };
 
-const Sidebar = () => {
-  const location = useLocation();
-  const [isCollapsed, setIsCollapsed] = useState(false);
+interface NavItem {
+  name: string;
+  href: string;
+  icon: LucideIcon;
+}
 
+const navigation: NavItem[] = [
+  { name: 'Dashboard', href: '/', icon: BarChart3 },
+  { name: 'Khách hàng', href: '/customers', icon: Users },
+  { name: 'Đồ ăn & Nước uống', href: '/food', icon: UtensilsCrossed },
+  { name: 'Trò chơi', href: '/games', icon: Gamepad2 },
+  { name: 'Phòng máy', href: '/room', icon: Monitor },
+  { name: 'Cài đặt', href: '/settings', icon: Settings },
+];
+
+const SidebarContent = ({ pathname, onClose }: { pathname: string; onClose?: () => void }) => {
   return (
-    <motion.div
-      animate={{ 
-        width: isCollapsed ? 72 : 256,
-        x: 0, 
-        opacity: 1
-      }}
-      className="bg-white border-r border-border h-full flex flex-col transition-all duration-300 shadow-md"
-      style={{ minWidth: isCollapsed ? 72 : 256, width: isCollapsed ? 72 : 256 }}
-      initial={{ x: -10, opacity: 0 }}
-      transition={{ duration: 0.3 }}
-    >
-      {/* Logo + Collapse Button */}
-      <div className={`p-4 border-b border-border flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
-        <motion.div 
-          className="flex items-center"
-          whileHover={{ scale: 1.05 }}
-          transition={{ duration: 0.2 }}
-        >
-          <Monitor className="w-8 h-8 text-primary mr-2" />
-          {!isCollapsed && <h1 className="text-xl font-bold text-foreground">CyberCafe Admin</h1>}
-        </motion.div>
-        <motion.button
-          className={`ml-2 p-2 rounded transition-colors ${isCollapsed ? 'bg-secondary text-primary' : 'hover:bg-secondary text-muted-foreground hover:text-primary'}`}
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          onClick={() => setIsCollapsed((v) => !v)}
-          aria-label={isCollapsed ? 'Mở rộng sidebar' : 'Thu gọn sidebar'}
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.95 }}
-        >
-          {isCollapsed ? (
-            <ChevronRight className="w-7 h-7" />
-          ) : (
-            <ChevronLeft className="w-5 h-5" />
-          )}
-        </motion.button>
+    <div className="flex flex-col h-full">
+      {/* Logo */}
+      <div className="flex h-16 items-center px-6 border-b border-gray-200">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg flex items-center justify-center">
+            <Monitor className="w-4 h-4 text-white" />
+          </div>
+          <span className="text-xl font-bold text-gray-900">Admin Panel</span>
+        </div>
+        {onClose && (
+          <Button variant="ghost" size="icon" className="ml-auto lg:hidden" onClick={onClose}>
+            <X className="h-6 w-6" />
+          </Button>
+        )}
       </div>
 
-      {/* Navigation Links */}
-      <nav className="flex-1 py-2 space-y-1">
-        {[
-          { path: '/', icon: <LayoutDashboard className="w-5 h-5 mr-3" />, label: 'Dashboard' },
-          { path: '/customers', icon: <Users className="w-5 h-5 mr-3" />, label: 'Khách hàng' },
-          { path: '/room', icon: <Monitor className="w-5 h-5 mr-3" />, label: 'Phòng máy' },
-          { path: '/games', icon: <Gamepad2 className="w-5 h-5 mr-3" />, label: 'Trò chơi' },
-          { path: '/food', icon: <Coffee className="w-5 h-5 mr-3" />, label: 'Đồ ăn' },
-          { path: '/settings', icon: <Settings className="w-5 h-5 mr-3" />, label: 'Cài đặt' }
-        ].map((item) => (
-          <motion.div
-            key={item.path}
-            whileHover={{ 
-              x: 4,
-              transition: { duration: 0.2 } 
-            }}
-            whileTap={{ scale: 0.98 }}
-          >
-            <Link 
-              to={item.path} 
-              className={`flex items-center px-4 py-3 text-foreground hover:bg-secondary rounded-lg transition-colors ${
-                location.pathname === item.path ? 'bg-secondary text-primary shadow-sm' : ''
-              }`}
-            >
-              {item.icon}
-              {!isCollapsed && <span>{item.label}</span>}
+      {/* Navigation */}
+      <nav className="flex-1 px-4 py-6 space-y-2">
+        {navigation.map((item) => {
+          const isActive = 
+            (item.href === "/" && pathname === "/") ||
+            (item.href !== "/" && (pathname === item.href || pathname.startsWith(item.href + "/")));
+          const Icon = item.icon;
+          return (
+            <Link key={item.name} to={item.href} onClick={onClose}>
+              <motion.div
+                whileHover={{ x: 4 }}
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  isActive
+                    ? "bg-blue-50 text-blue-700 border border-blue-200"
+                    : "text-gray-700 hover:text-gray-900 hover:bg-gray-50"
+                }`}
+              >
+                <Icon className="w-5 h-5" />
+                {item.name}
+                {isActive && <motion.div layoutId="activeTab" className="ml-auto w-2 h-2 bg-blue-600 rounded-full" />}
+              </motion.div>
             </Link>
-          </motion.div>
-        ))}
+          );
+        })}
       </nav>
 
-      {/* User profile */}
-      <div className="border-t border-border p-4">
-        <motion.div 
-          className="flex items-center"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.3 }}
+      {/* Settings and logout */}
+      <div className="p-4 border-t border-gray-200 space-y-2">
+        <div className="flex items-center gap-2">
+          <Avatar className="h-8 w-8">
+            <AvatarFallback className="bg-blue-500 text-white">
+              AD
+            </AvatarFallback>
+          </Avatar>
+          <div>
+            <p className="text-sm font-medium text-gray-900">Admin</p>
+            <Badge variant="secondary" className="bg-blue-100 text-blue-800 text-xs">
+              Administrator
+            </Badge>
+          </div>
+        </div>
+        <Button
+          variant="ghost"
+          className="w-full justify-start text-gray-700 hover:text-red-600 hover:bg-red-50"
         >
-          <motion.div 
-            className="w-10 h-10 rounded-full bg-primary/30 flex items-center justify-center shadow-sm"
-            whileHover={{ scale: 1.1 }}
-            transition={{ duration: 0.2 }}
-          >
-            <UserRound className="w-6 h-6 text-primary" />
-          </motion.div>
-          {!isCollapsed && (
-            <div className="ml-3">
-              <p className="text-sm font-medium text-foreground">Admin</p>
-              <p className="text-xs text-muted-foreground">admin@cybercafe.com</p>
-            </div>
-          )}
-          <motion.button 
-            className="ml-auto p-1 rounded-full hover:bg-secondary text-muted-foreground hover:text-foreground"
-            whileHover={{ scale: 1.1, rotate: 10 }}
-            whileTap={{ scale: 0.9 }}
-          >
-            <LogOut className="w-5 h-5" />
-          </motion.button>
-        </motion.div>
+          <LogOut className="w-4 h-4 mr-2" />
+          Đăng xuất
+        </Button>
       </div>
-    </motion.div>
+    </div>
   );
 };
 
-const Header = () => {
-  return (
-    <motion.header 
-      className="bg-white border-b border-border shadow-sm"
-      initial={{ y: -10, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.3 }}
-    >
-      <div className="px-6 py-4 flex items-center justify-end">
-        <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-          <ThemeSwitcher />
-        </motion.div>
-      </div>
-    </motion.header>
-  );
+// RouteListener to log route changes
+const RouteListener = () => {
+  const location = useLocation();
+  
+  useEffect(() => {
+    console.log('Current route:', location.pathname);
+  }, [location]);
+  
+  return null;
 };
 
 const MainLayout = () => {
   const location = useLocation();
-  
-  // Get the title based on the current route
-  const getTitle = () => {
-    switch (location.pathname) {
-      case '/':
-        return 'Dashboard';
-      case '/customers':
-        return 'Quản lý khách hàng';
-      case '/room':
-        return 'Quản lý phòng máy';
-      case '/games':
-        return 'Quản lý trò chơi';
-      case '/food':
-        return 'Quản lý đồ ăn';
-      case '/settings':
-        return 'Cài đặt hệ thống';
-      default:
-        return 'CyberCafe Admin';
-    }
-  };
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="flex h-screen bg-white text-foreground">
-      <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <Header />
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      <RouteListener />
+      {/* Mobile sidebar overlay */}
+      <AnimatePresence>
+        {sidebarOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 lg:hidden"
+          >
+            <div className="absolute inset-0 bg-black/50" onClick={() => setSidebarOpen(false)} />
+            <motion.div
+              initial={{ x: -300 }}
+              animate={{ x: 0 }}
+              exit={{ x: -300 }}
+              className="absolute left-0 top-0 h-full w-80 bg-white shadow-xl"
+            >
+              <SidebarContent pathname={location.pathname} onClose={() => setSidebarOpen(false)} />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Desktop sidebar */}
+      <div className="hidden lg:fixed lg:inset-y-0 lg:z-40 lg:w-80 lg:flex">
+        <div className="flex flex-col bg-white shadow-xl">
+          <SidebarContent pathname={location.pathname} />
+        </div>
+      </div>
+
+      <div className="lg:pl-80">
+        {/* Header */}
+        <div className="sticky top-0 z-30 flex h-16 items-center gap-x-4 border-b border-gray-200 bg-white/80 backdrop-blur-lg px-4 sm:gap-x-6 sm:px-6 lg:px-8">
+          <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setSidebarOpen(true)}>
+            <Menu className="h-6 w-6" />
+          </Button>
+
+          <div className="flex flex-1 gap-x-4 self-stretch lg:gap-x-6">
+            <div className="flex flex-1 items-center">
+              <h1 className="text-xl font-semibold text-gray-900">
+                {navigation.find((item) => 
+                  item.href === "/" && location.pathname === "/" ? true : 
+                  item.href !== "/" && location.pathname.startsWith(item.href)
+                )?.name || "Dashboard"}
+              </h1>
+            </div>
+            <div className="flex items-center gap-x-4 lg:gap-x-6">
+              {/* Notifications */}
+              <Button variant="ghost" size="icon" className="relative">
+                <Bell className="h-5 w-5" />
+                <Badge className="absolute -top-1 -right-1 bg-red-500 text-white min-w-[16px] h-4 flex items-center justify-center text-xs">
+                  3
+                </Badge>
+              </Button>
+            </div>
+          </div>
+        </div>
+
         <motion.main 
-          className="flex-1 overflow-auto p-6 bg-slate-50"
+          className="relative"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.5 }}
         >
-          <motion.h1
-            className="text-2xl font-semibold mb-6"
-            initial={{ x: -20, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            transition={{ duration: 0.3, delay: 0.1 }}
-          >
-            {getTitle()}
-          </motion.h1>
-          
-          <AnimatePresence mode="wait">
-            <Routes location={location} key={location.pathname}>
-              <Route path="/" element={
-                <motion.div
-                  initial="initial"
-                  animate="animate"
-                  exit="exit"
-                  variants={pageVariants}
-                >
-                  <Dashboard />
-                </motion.div>
-              } />
-              <Route path="/customers" element={
-                <motion.div
-                  initial="initial"
-                  animate="animate"
-                  exit="exit"
-                  variants={pageVariants}
-                >
-                  <CustomersPage />
-                </motion.div>
-              } />
-              <Route path="/room" element={
-                <motion.div
-                  initial="initial"
-                  animate="animate"
-                  exit="exit"
-                  variants={pageVariants}
-                >
-                  <RoomPage />
-                </motion.div>
-              } />
-              <Route path="/games" element={
-                <motion.div
-                  initial="initial"
-                  animate="animate"
-                  exit="exit"
-                  variants={pageVariants}
-                >
-                  <GamesPage />
-                </motion.div>
-              } />
-              <Route path="/food" element={
-                <motion.div
-                  initial="initial"
-                  animate="animate"
-                  exit="exit"
-                  variants={pageVariants}
-                >
-                  <FoodPage />
-                </motion.div>
-              } />
-              <Route path="/settings" element={
-                <motion.div
-                  initial="initial"
-                  animate="animate"
-                  exit="exit"
-                  variants={pageVariants}
-                >
-                  <SettingsPage />
-                </motion.div>
-              } />
-            </Routes>
-          </AnimatePresence>
+          <ErrorBoundary>
+            <AnimatePresence mode="wait">
+              <Routes location={location} key={location.pathname}>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/customers" element={<ErrorBoundary><CustomersPage /></ErrorBoundary>} />
+                <Route path="/room" element={<ErrorBoundary><RoomPage /></ErrorBoundary>} />
+                <Route path="/games" element={<ErrorBoundary><GamesPage /></ErrorBoundary>} />
+                <Route path="/food" element={<ErrorBoundary><FoodPage /></ErrorBoundary>} />
+                <Route path="/settings" element={<ErrorBoundary><SettingsPage /></ErrorBoundary>} />
+                <Route path="*" element={<Dashboard />} />
+              </Routes>
+            </AnimatePresence>
+          </ErrorBoundary>
         </motion.main>
-        <motion.footer 
-          className="bg-white border-t border-border py-4 px-6 shadow-inner"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
-        >
-          <p className="text-center text-muted-foreground text-sm">
-            © 2025 CyberCafe Management System - Server Version 1.0.0
-          </p>
-        </motion.footer>
       </div>
     </div>
   );
@@ -301,11 +294,9 @@ const MainLayout = () => {
 
 const App: React.FC = () => {
   return (
-    <ThemeProvider>
-      <Router>
-        <MainLayout />
-      </Router>
-    </ThemeProvider>
+    <Router>
+      <MainLayout />
+    </Router>
   );
 };
 
