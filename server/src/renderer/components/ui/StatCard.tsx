@@ -1,98 +1,66 @@
 import React, { ReactNode } from 'react';
-import { motion } from 'framer-motion';
-import { TrendingUp } from 'lucide-react';
-import { Card } from './Card';
+import { TrendingUp, TrendingDown } from 'lucide-react';
+import { Card, CardContent } from './Card';
 
 export interface StatCardProps {
   title: string;
-  value: string;
+  value: string | number;
   icon: ReactNode;
   trend?: 'up' | 'down' | 'neutral';
   trendValue?: string;
-  colorClass?: string;
+  className?: string;
+  iconClassName?: string;
+  bgColorClass?: string;
+  textColorClass?: string;
+  borderColorClass?: string;
   iconBgClass?: string;
   iconColorClass?: string;
-  withAnimation?: boolean;
-  className?: string;
 }
 
 export const StatCard: React.FC<StatCardProps> = ({
   title,
   value,
   icon,
-  trend,
-  trendValue,
-  colorClass = 'text-primary',
-  iconBgClass = 'bg-primary/10',
-  iconColorClass = 'text-primary',
-  withAnimation = true,
-  className = ''
+  trend = 'neutral',
+  trendValue = '0%',
+  className = '',
+  iconClassName = '',
+  bgColorClass = 'bg-gradient-to-br from-blue-50 to-blue-100',
+  borderColorClass = 'border-blue-200',
+  textColorClass = 'text-blue-900',
+  iconBgClass = 'bg-blue-500',
+  iconColorClass = 'text-white',
 }) => {
-  const getTrendColor = () => {
-    if (trend === 'up') return 'text-green-500';
-    if (trend === 'down') return 'text-red-500';
-    return 'text-yellow-500';
-  };
-  
   return (
-    <Card 
-      className={className}
-      hoverEffect={withAnimation}
-    >
-      <div className="p-6">
-        <div className="flex justify-between items-start mb-4">
-          <motion.h3
-            initial={{ opacity: 0, x: -10 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.3 }}
-            className="text-muted-foreground font-medium text-sm"
-          >
-            {title}
-          </motion.h3>
-          <motion.div
-            whileHover={withAnimation ? { rotate: 10, scale: 1.1 } : undefined}
-            transition={{ type: "spring", stiffness: 400, damping: 10 }}
-            className={`p-2 rounded-lg ${iconBgClass} ${iconColorClass}`}
-          >
-            {icon}
-          </motion.div>
-        </div>
-        <div className="flex flex-col">
-          <motion.span 
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.1 }}
-            className="text-2xl font-bold text-foreground"
-          >
-            {value}
-          </motion.span>
-          
-          {trend && trendValue && (
-            <div className="flex items-center mt-2">
-              <motion.div
-                initial={{ scale: 0.8 }}
-                animate={{ scale: 1 }}
-                transition={{
-                  type: "spring",
-                  stiffness: 260,
-                  damping: 20
-                }}
-                className={`flex items-center ${getTrendColor()}`}
-              >
-                {trend === 'up' ? (
-                  <TrendingUp className="w-4 h-4 mr-1" />
-                ) : trend === 'down' ? (
-                  <TrendingUp className="w-4 h-4 mr-1 transform rotate-180" />
-                ) : (
-                  <span className="w-4 h-4 mr-1">―</span>
-                )}
-                <span className="text-xs font-medium">{trendValue}</span>
-              </motion.div>
-              <span className="text-xs text-muted-foreground ml-1">so với trước</span>
+    <Card className={`${borderColorClass} ${bgColorClass} ${className}`}>
+      <CardContent className="p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className={`${textColorClass}/60 text-sm font-medium`}>{title}</p>
+            <p className={`text-2xl font-bold ${textColorClass}`}>
+              {value}
+            </p>
+            <div className="flex items-center mt-1">
+              {trend === 'up' && <TrendingUp className="w-3 h-3 text-green-500 mr-1" />}
+              {trend === 'down' && <TrendingDown className="w-3 h-3 text-red-500 mr-1" />}
+              <p className={`text-xs ${
+                trend === 'up' 
+                  ? 'text-green-600' 
+                  : trend === 'down' 
+                  ? 'text-red-600' 
+                  : `${textColorClass}/60`
+              }`}>
+                {trendValue}
+              </p>
             </div>
-          )}
+          </div>
+          <div className={`w-12 h-12 ${iconBgClass} rounded-full flex items-center justify-center ${iconClassName}`}>
+            <div className={iconColorClass}>
+              {icon}
+            </div>
+          </div>
         </div>
-      </div>
+      </CardContent>
     </Card>
   );
 }; 
