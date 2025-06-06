@@ -1,7 +1,9 @@
 const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
+const nodeExternals = require('webpack-node-externals');
 
-module.exports = {
+// Configuration for the renderer process
+const rendererConfig = {
   mode: process.env.NODE_ENV || 'development',
   entry: './src/renderer/index.tsx',
   target: 'electron-renderer',
@@ -54,4 +56,35 @@ module.exports = {
       template: './src/renderer/index.html',
     }),
   ],
-}; 
+};
+
+// Configuration for the main process
+const mainConfig = {
+  mode: process.env.NODE_ENV || 'development',
+  entry: './src/main/main.ts',
+  target: 'electron-main',
+  devtool: 'source-map',
+  module: {
+    rules: [
+      {
+        test: /\.tsx?$/,
+        use: 'ts-loader',
+        exclude: /node_modules/,
+      },
+    ],
+  },
+  resolve: {
+    extensions: ['.tsx', '.ts', '.js'],
+    alias: {
+      '@': path.resolve(__dirname, 'src'),
+    },
+  },
+  output: {
+    filename: 'main.js',
+    path: path.resolve(__dirname, 'dist/main'),
+  },
+    externals: [nodeExternals()],
+};
+
+// Export both configurations as an array
+module.exports = [rendererConfig, mainConfig]; 

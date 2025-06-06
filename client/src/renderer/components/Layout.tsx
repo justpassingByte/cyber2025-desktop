@@ -18,6 +18,7 @@ import {
 } from '../components/icons';
 import { useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
 import { useTheme } from './ThemeProvider';
+import { useUserStore } from '../context/UserContext';
 
 type NavItem = {
   name: string;
@@ -26,15 +27,15 @@ type NavItem = {
 };
 
 const navigation: NavItem[] = [
-  { name: "Dashboard", href: "/dashboard", icon: Home },
-  { name: "Recharge", href: "/recharge", icon: CreditCard },
-  { name: "Order Food", href: "/food", icon: Gift },
-  { name: "Reserve PC", href: "/reserve", icon: Monitor },
-  { name: "Tournaments", href: "/tournaments", icon: Trophy },
-  { name: "Rewards", href: "/rewards", icon: Gift },
-  { name: "My Machine", href: "/machine", icon: Cpu },
-  { name: "Profile", href: "/profile", icon: User },
-  { name: "Chat", href: "/chat", icon: MessageCircle },
+  { name: "Dashboard", href: "dashboard", icon: Home },
+  { name: "Recharge", href: "recharge", icon: CreditCard },
+  { name: "Order Food", href: "food", icon: Gift },
+  { name: "Reserve PC", href: "reserve", icon: Monitor },
+  { name: "Tournaments", href: "tournaments", icon: Trophy },
+  { name: "Rewards", href: "rewards", icon: Gift },
+  { name: "My Machine", href: "machine", icon: Cpu },
+  { name: "Profile", href: "profile", icon: User },
+  { name: "Chat", href: "chat", icon: MessageCircle },
 ];
 
 type LayoutProps = {
@@ -46,28 +47,45 @@ export function Layout({ children }: LayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const pathname = location.pathname;
-  const [username, setUsername] = useState('User');
-  const [balance, setBalance] = useState(24.50);
-  const [timeRemaining, setTimeRemaining] = useState('2h 15m');
-  const [rank, setRank] = useState('Pro Gamer');
   const { theme, setTheme } = useTheme();
+  
+  // Get user data from Zustand store
+  const user = useUserStore((state) => state.user);
+  const clearUser = useUserStore((state) => state.clearUser);
+  const [username, setUsername] = useState('User');
+  const [balance, setBalance] = useState(0);
+  const [timeRemaining, setTimeRemaining] = useState('0h 0m');
+  const [rank, setRank] = useState('New Gamer');
   
   const toggleTheme = () => {
     setTheme(theme === 'dark' ? 'light' : 'dark');
   };
   
+  // Format time remaining for display
+  const formatTime = (seconds: number) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    return `${hours}h ${minutes}m`;
+  };
+  
   useEffect(() => {
-    // Get user data from localStorage
-    const userStr = localStorage.getItem('user');
-    if (userStr) {
-      try {
-        const user = JSON.parse(userStr);
-        setUsername(user.username || 'User');
-      } catch (err) {
-        console.error('Failed to parse user data');
-      }
+    // Check if user exists in store
+    if (user) {
+      console.log("Layout received user:", user);
+      setUsername(user.username);
+      setBalance(user.balance);
+      setRank(user.rank);
+      setTimeRemaining(formatTime(user.timeRemaining));
+    } else {
+      // Redirect to login if no user found
+      navigate('/');
     }
-  }, []);
+  }, [user, navigate]);
+
+  const handleLogout = () => {
+    clearUser();
+    navigate('/');
+  };
 
   return (
     <div className={`min-h-screen transition-colors duration-700 ${
@@ -106,6 +124,7 @@ export function Layout({ children }: LayoutProps) {
                 username={username}
                 timeRemaining={timeRemaining}
                 theme={theme}
+                onLogout={handleLogout}
               />
             </motion.div>
           </motion.div>
@@ -124,6 +143,7 @@ export function Layout({ children }: LayoutProps) {
             username={username} 
             timeRemaining={timeRemaining}
             theme={theme}
+            onLogout={handleLogout}
           />
         </div>
       </div>
@@ -148,7 +168,7 @@ export function Layout({ children }: LayoutProps) {
           <div className="flex flex-1 gap-x-4 self-stretch lg:gap-x-6">
             <div className="flex flex-1 items-center">
               <h1 className={`text-xl font-semibold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                {navigation.find((item) => item.href === pathname)?.name || "Dashboard"}
+                {navigation.find((item) => `/${item.href}` === pathname)?.name || "Dashboard"}
               </h1>
             </div>
             <div className="flex items-center gap-x-4 lg:gap-x-6">
@@ -174,7 +194,7 @@ export function Layout({ children }: LayoutProps) {
               }`}>
                 <Coins className={`w-4 h-4 ${theme === 'dark' ? 'text-cyan-400' : 'text-cyan-700'}`} />
                 <span className={`font-medium ${theme === 'dark' ? 'text-cyan-400' : 'text-cyan-700'}`}>
-                  ${balance.toFixed(2)}
+                  {balance} VND
                 </span>
               </div>
 
@@ -221,13 +241,15 @@ function SidebarContent({
   onClose,
   username,
   timeRemaining,
-  theme
+  theme,
+  onLogout
 }: { 
   pathname: string; 
   onClose?: () => void;
   username: string;
   timeRemaining: string;
   theme: string;
+  onLogout: () => void;
 }) {
   const navigate = useNavigate();
   
@@ -248,46 +270,37 @@ function SidebarContent({
           </span>
         </div>
         {onClose && (
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className={`ml-auto lg:hidden ${theme === 'dark' ? 'text-white' : 'text-slate-700'}`}
-            onClick={onClose}
-          >
-            <X className="h-6 w-6" />
+          <Button variant="ghost" size="icon" onClick={onClose} className="absolute right-2 text-gray-400 hover:text-gray-600">
+            <X className="w-5 h-5" />
           </Button>
         )}
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 px-4 py-6 space-y-2">
+      {/* Navigation links */}
+      <nav className={`flex-1 px-4 py-6 space-y-1 transition-colors duration-700 ${
+        theme === 'dark' ? 'text-gray-300' : 'text-slate-700'
+      }`}>
         {navigation.map((item) => {
-          const isActive =
-            pathname === item.href ||
-            (item.href !== "/dashboard" && pathname.startsWith(item.href + "/"));
+          const isActive = pathname === `/${item.href}`;
+          const Icon = item.icon;
           return (
-            <RouterLink key={item.name} to={item.href} onClick={onClose}>
+            <RouterLink key={item.name} to={`/${item.href}`} className="block">
               <motion.div
                 whileHover={{ x: 4 }}
                 className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
+                  isActive 
                     ? theme === 'dark'
-                      ? "bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-cyan-400 border border-cyan-500/30"
-                      : "bg-gradient-to-r from-cyan-600/15 to-blue-600/15 text-cyan-700 border border-cyan-600/30"
+                      ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/30'
+                      : 'bg-cyan-600/10 text-cyan-700 border border-cyan-600/30'
                     : theme === 'dark'
-                      ? "text-gray-300 hover:text-white hover:bg-white/10"
-                      : "text-slate-700 hover:text-slate-900 hover:bg-slate-200/60"
+                      ? 'text-gray-300 hover:text-white hover:bg-white/5'
+                      : 'text-slate-700 hover:text-slate-900 hover:bg-slate-100'
                 }`}
               >
-                <item.icon className="w-5 h-5" />
+                <Icon className="w-5 h-5" />
                 {item.name}
                 {isActive && (
-                  <motion.div 
-                    layoutId="activeTab" 
-                    className={`ml-auto w-2 h-2 rounded-full ${
-                      theme === 'dark' ? 'bg-cyan-400' : 'bg-cyan-700'
-                    }`} 
-                  />
+                  <motion.div layoutId="activeTab" className="ml-auto w-1.5 h-1.5 rounded-full bg-cyan-400" />
                 )}
               </motion.div>
             </RouterLink>
@@ -295,7 +308,7 @@ function SidebarContent({
         })}
       </nav>
 
-      {/* User info and logout */}
+      {/* User info & logout */}
       <div className={`p-4 transition-colors duration-700 ${
         theme === 'dark' 
           ? 'border-t border-white/10' 
@@ -321,10 +334,7 @@ function SidebarContent({
               ? 'text-gray-300 hover:text-white hover:bg-red-500/20'
               : 'text-slate-700 hover:text-slate-900 hover:bg-red-500/15'
           }`}
-          onClick={() => {
-            localStorage.removeItem('user');
-            navigate('/');
-          }}
+          onClick={onLogout}
         >
           <LogOut className="w-4 h-4 mr-2" />
           Logout

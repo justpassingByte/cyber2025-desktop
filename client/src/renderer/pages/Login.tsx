@@ -1,38 +1,105 @@
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { AlertCircle, User, Gift, Coffee } from 'lucide-react';
+import { AlertCircle, User as LucideUser, Gift, Coffee } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent } from '../components/ui/card';
 import { useTheme } from '../components/ThemeProvider';
+import authService from '../services/authService';
+import { useUserStore } from '../context/UserContext';
+import type { User } from '../context/UserContext';
 
 export function Login() {
   const [username, setUsername] = React.useState('');
   const [password, setPassword] = React.useState('');
-  const [error, setError] = React.useState('');
-  const [isLoading, setIsLoading] = React.useState(false);
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
+  const setUser = useUserStore((state) => state.setUser);
+  
+  // States for UI
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [loginError, setLoginError] = React.useState('');
+  const [isSocketConnected, setIsSocketConnected] = React.useState(true);
 
-  const handleLogin = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!username || !password) {
-      setError('Vui lòng nhập email và mật khẩu');
-      return;
-    }
+  // Kiểm tra trạng thái kết nối socket mỗi khi mở trang
+  React.useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const connected = await authService.isSocketConnected();
+        if (mounted) setIsSocketConnected(!!connected);
+      } catch {
+        if (mounted) setIsSocketConnected(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  // Xử lý đăng nhập
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
+    setIsLoading(true);
+    
     try {
-      setIsLoading(true);
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      if (username === 'client' && password === 'password') {
-        localStorage.setItem('user', JSON.stringify({ username }));
+      // Kiểm tra nhập liệu
+      if (!username || !password) {
+        setLoginError('Vui lòng nhập username/email/phone và mật khẩu');
+        setIsLoading(false);
+        return;
+      }
+      
+      // Kiểm tra kết nối socket
+      const connected = await authService.isSocketConnected();
+      if (!connected) {
+        setLoginError('Không thể kết nối đến máy chủ. Vui lòng thử lại sau.');
+        setIsLoading(false);
+        setIsSocketConnected(false);
+        return;
+      }
+      setIsSocketConnected(true);
+      
+      // Gọi API đăng nhập qua authService
+      const response = await authService.login({ 
+        username, 
+        password 
+      });
+
+      // Xử lý kết quả đăng nhập
+      if (response.success && response.customer) {
+        // Đảm bảo object có đủ trường username, id, balance
+        const customer = response.customer as any;
+        
+        // Log the customer data received from API
+        console.log("API customer data:", customer);
+        
+        const userObj: User = {
+          id: customer.id,
+          username: customer.username ?? customer.name ?? '',
+          email: customer.email ?? '',
+          balance: customer.balance ?? 0,
+          // Đảm bảo các trường mới luôn có giá trị, bất kể API có trả về hay không
+          timeRemaining: customer.timeRemaining ?? 3 * 60 * 60, // 3 giờ tính bằng giây
+          rank: customer.rank ?? 'Pro Gamer',
+          dailyStreak: customer.dailyStreak ?? 7
+        };
+        
+        console.log("Setting user data:", userObj);
+        setUser(userObj);
+        // Đăng ký socket với server để nhận notification
+        if (window.require) {
+          const { ipcRenderer } = window.require('electron');
+          // Gửi userId lên main process để emit qua socket
+          ipcRenderer.invoke('socket:register-user', userObj.id);
+        }
         navigate('/dashboard');
       } else {
-        setError('Email hoặc mật khẩu không đúng');
+        setLoginError(response.error || 'Đăng nhập thất bại, vui lòng kiểm tra thông tin đăng nhập');
       }
-    } catch (err) {
-      setError('Có lỗi xảy ra khi đăng nhập');
-      console.error(err);
+    } catch (error) {
+      console.error('Login error:', error);
+      setLoginError('Đã xảy ra lỗi khi đăng nhập');
     } finally {
       setIsLoading(false);
     }
@@ -71,7 +138,7 @@ export function Login() {
           )}
         </Button>
       </div>
-      {/* Logo động nổi bật ngoài Card + Tên + Mô tả */}
+      {/* Logo and description */}
       <div className="flex flex-col items-center mb-8 z-10">
         <motion.div
           initial={{ scale: 0, opacity: 0, y: -40 }}
@@ -109,23 +176,29 @@ export function Login() {
             >
               Welcome back!
             </motion.h1>
-            {error && (
+            {loginError && (
               <div className="mb-2 flex items-center gap-2 rounded-md bg-red-50 p-3 text-sm text-red-500 dark:bg-red-900/30 dark:text-red-400">
                 <AlertCircle className="h-4 w-4" />
-                <span>{error}</span>
+                <span>{loginError}</span>
+              </div>
+            )}
+            {!isSocketConnected && (
+              <div className="mb-2 flex items-center gap-2 rounded-md bg-yellow-50 p-3 text-sm text-yellow-500 dark:bg-yellow-900/30 dark:text-yellow-400">
+                <AlertCircle className="h-4 w-4" />
+                <span>Đang kết nối đến máy chủ...</span>
               </div>
             )}
             <form onSubmit={handleLogin} className="space-y-4 mt-6">
               <div className="space-y-2">
-                <label htmlFor="customer-email" className="text-sm font-medium text-gray-200">Email</label>
+                <label htmlFor="customer-email" className="text-sm font-medium text-gray-200">Username/Email/Phone</label>
                 <Input id="customer-email" type="text" value={username} onChange={e => setUsername(e.target.value)} placeholder="gamer@cybercafe.com" className="bg-white/10 border-white/20 text-white placeholder:text-gray-400" disabled={isLoading} />
               </div>
               <div className="space-y-2">
-                <label htmlFor="customer-password" className="text-sm font-medium text-gray-200">Password</label>
-                <Input id="customer-password" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Nhập mật khẩu" className="bg-white/10 border-white/20 text-white placeholder:text-gray-400" disabled={isLoading} />
+                <label htmlFor="customer-password" className="text-sm font-medium text-gray-200">Mật khẩu</label>
+                <Input id="customer-password" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="bg-white/10 border-white/20 text-white placeholder:text-gray-400" disabled={isLoading} />
               </div>
-              <Button type="submit" disabled={isLoading} className="w-full bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white">
-                {isLoading ? 'Logging in...' : 'Enter Gaming Zone'}
+              <Button type="submit" disabled={isLoading || !isSocketConnected} className="w-full bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white">
+                {isLoading ? 'Đang đăng nhập...' : 'Đăng nhập'}
               </Button>
             </form>
           </CardContent>
@@ -133,7 +206,7 @@ export function Login() {
         {/* Features */}
         <div className="mt-8 grid grid-cols-3 gap-4 text-center">
           <div className="text-cyan-400">
-            <User className="w-6 h-6 mx-auto mb-1" />
+            <LucideUser className="w-6 h-6 mx-auto mb-1" />
             <p className="text-xs">Community</p>
           </div>
           <div className="text-purple-400">
