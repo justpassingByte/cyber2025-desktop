@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Search, 
@@ -14,94 +14,151 @@ import {
   UserPlus, 
   Users, 
   Star, 
-  MoreVertical 
+  MoreVertical,
+  Send,
+  Activity,
+  Database,
+  Wifi,
+  WifiOff,
+  Bot,
+  MapPin,
+  Key,
+  RefreshCcw
 } from 'lucide-react';
 import Modal from '../../components/Modal';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, Badge, Button } from '../../components/ui';
+import UserTopUpTester from '../../components/UserTopUpTester';
+import TopUpTester from '../../components/TopUpTester';
+import axios from 'axios';
+import io from 'socket.io-client';
+import customerService, { CustomerListItem } from '../../services/customerService';
+import SystemNotification from '../../components/SystemNotification';
+const { ipcRenderer } = window.require('electron');
 
-interface Customer {
+// Thêm định nghĩa enum cho trạng thái khách hàng
+type CustomerStatus = 'active' | 'suspended' | 'inactive';
+
+// Xác định lại CustomerDetail type
+interface CustomerDetail {
   id: string;
   name: string;
   email: string;
-  phone: string;
-  memberSince: string;
+  phone?: string;
+  address?: string;
+  dob?: string;
+  status: CustomerStatus;
+  balance: number;
+  points: number;
   totalSpent: number;
-  status: 'active' | 'inactive' | 'suspended';
-  hoursPlayed?: number;
-  level?: number;
-  balance?: number;
-  lastSeen?: string;
+  hoursPlayed: number;
+  memberSince: string;
+  lastSeen: string;
+  level: number;
+  avatarUrl?: string;
 }
 
-const mockCustomers: Customer[] = [
-  {
-    id: '1',
-    name: 'Nguyễn Văn A',
-    email: 'nguyenvana@example.com',
-    phone: '0901234567',
-    memberSince: '12/05/2023',
-    totalSpent: 1250000,
-    status: 'active',
-    hoursPlayed: 156,
-    level: 5,
-    balance: 240000,
-    lastSeen: '2 giờ trước'
-  },
-  {
-    id: '2',
-    name: 'Trần Thị B',
-    email: 'tranthib@example.com',
-    phone: '0912345678',
-    memberSince: '25/06/2023',
-    totalSpent: 850000,
-    status: 'active',
-    hoursPlayed: 89,
-    level: 4,
-    balance: 120000,
-    lastSeen: 'Đang online'
-  },
-  {
-    id: '3',
-    name: 'Lê Văn C',
-    email: 'levanc@example.com',
-    phone: '0923456789',
-    memberSince: '10/07/2023',
-    totalSpent: 2100000,
-    status: 'suspended',
-    hoursPlayed: 234,
-    level: 7,
-    balance: 0,
-    lastSeen: '1 tuần trước'
-  },
-  {
-    id: '4',
-    name: 'Phạm Thị D',
-    email: 'phamthid@example.com',
-    phone: '0934567890',
-    memberSince: '05/08/2023',
-    totalSpent: 750000,
-    status: 'active',
-    hoursPlayed: 67,
-    level: 3,
-    balance: 450000,
-    lastSeen: '30 phút trước'
-  },
-  {
-    id: '5',
-    name: 'Hoàng Văn E',
-    email: 'hoangvane@example.com',
-    phone: '0945678901',
-    memberSince: '18/09/2023',
-    totalSpent: 1500000,
-    status: 'inactive',
-    hoursPlayed: 178,
-    level: 6,
-    balance: 85000,
-    lastSeen: '1 giờ trước'
-  },
-];
+// Component hiển thị một dòng trong hoạt động gần đây
+const ActivityItem = ({ activity }: { activity: any }) => {
+  const getActivityIcon = (action: string) => {
+    switch (action) {
+      case 'login':
+        return <UserRound className="w-4 h-4 text-blue-500" />;
+      case 'logout':
+        return <WifiOff className="w-4 h-4 text-gray-500" />;
+      case 'topup':
+        return <DollarSign className="w-4 h-4 text-green-500" />;
+      case 'view_transactions':
+        return <Activity className="w-4 h-4 text-purple-500" />;
+      case 'session_start':
+        return <Clock className="w-4 h-4 text-orange-500" />;
+      case 'session_end':
+        return <Clock className="w-4 h-4 text-red-500" />;
+      default:
+        return <Activity className="w-4 h-4 text-gray-500" />;
+    }
+  };
 
-const CustomerDetails = ({ customer, onTopup }: { customer: Customer | null, onTopup: () => void }) => {
+  const getActivityText = (activity: any) => {
+    const time = new Date(activity.timestamp).toLocaleTimeString();
+    const date = new Date(activity.timestamp).toLocaleDateString();
+    
+    switch (activity.action) {
+      case 'login':
+        return `Đăng nhập vào hệ thống`;
+      case 'logout':
+        return `Đăng xuất khỏi hệ thống`;
+      case 'topup':
+        return `Nạp ${activity.details?.amount?.toLocaleString() || 0} VND vào tài khoản`;
+      case 'view_transactions':
+        return `Xem lịch sử giao dịch`;
+      case 'session_start':
+        return `Bắt đầu phiên sử dụng máy #${activity.details?.computer_id || '?'}`;
+      case 'session_end':
+        return `Kết thúc phiên sử dụng máy #${activity.details?.computer_id || '?'}`;
+      default:
+        return activity.action;
+    }
+  };
+
+  return (
+    <motion.div
+      className="flex items-center gap-3 p-3 border-b border-gray-100"
+      variants={{
+        hidden: { opacity: 0, y: 20 },
+        visible: { opacity: 1, y: 0 }
+      }}
+    >
+      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+        {getActivityIcon(activity.action)}
+      </div>
+      <div className="flex-1">
+        <p className="text-sm text-gray-800">{getActivityText(activity)}</p>
+        <p className="text-xs text-gray-500">
+          {new Date(activity.timestamp).toLocaleString()}
+        </p>
+      </div>
+    </motion.div>
+  );
+};
+
+const CustomerDetails = ({ customer, onTopup, onResetPassword, onEdit, onDelete }: { 
+  customer: CustomerDetail | null, 
+  onTopup: () => void, 
+  onResetPassword: () => void,
+  onEdit: () => void,
+  onDelete: () => void
+}) => {
+  const [showAccountActions, setShowAccountActions] = useState(false);
+  const [activityLogs, setActivityLogs] = useState<any[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+  
+  // Lấy hoạt động gần đây khi khách hàng được chọn
+  useEffect(() => {
+    if (customer) {
+      setLoadingLogs(true);
+      setActivityLogs([]);
+      
+      const fetchCustomerLogs = async () => {
+        try {
+          const result = await ipcRenderer.invoke('logs:getCustomerTimeline', customer.id, 10, 0);
+          console.log('Customer logs:', result);
+          
+          if (Array.isArray(result)) {
+            setActivityLogs(result);
+          } else {
+            setActivityLogs([]);
+          }
+        } catch (error) {
+          console.error('Error fetching customer logs:', error);
+        } finally {
+          setLoadingLogs(false);
+        }
+      };
+      
+      fetchCustomerLogs();
+    }
+  }, [customer]);
+
   if (!customer) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -110,26 +167,17 @@ const CustomerDetails = ({ customer, onTopup }: { customer: Customer | null, onT
     );
   }
 
+  // Thông tin liên hệ thực tế
   const contactDetails = [
     { label: 'Email', value: customer.email, icon: <Mail className="w-4 h-4 text-blue-500" /> },
     { label: 'Số điện thoại', value: customer.phone, icon: <Phone className="w-4 h-4 text-green-500" /> },
-    { label: 'Ngày đăng ký', value: customer.memberSince, icon: <CalendarDays className="w-4 h-4 text-purple-500" /> }
-  ];
+    { label: 'Ngày đăng ký', value: customer.memberSince, icon: <CalendarDays className="w-4 h-4 text-purple-500" /> },
+    customer.address ? { label: 'Địa chỉ', value: customer.address, icon: <MapPin className="w-4 h-4 text-orange-500" /> } : null,
+    customer.dob ? { label: 'Ngày sinh', value: customer.dob, icon: <CalendarDays className="w-4 h-4 text-yellow-500" /> } : null,
+  ].filter((d): d is { label: string; value: string; icon: JSX.Element } => d !== null);
 
-  const activityList = [
-    { id: 1, title: 'Đăng nhập vào máy #5', time: 'Hôm nay, 14:30', type: 'login' },
-    { id: 2, title: 'Nạp 200.000đ vào tài khoản', time: 'Hôm qua, 10:15', type: 'topup' },
-    { id: 3, title: 'Đăng xuất khỏi máy #5', time: 'Hôm qua, 12:45', type: 'logout' }
-  ];
-
-  const getActivityColor = (type: string) => {
-    switch (type) {
-      case 'login': return 'bg-green-500';
-      case 'topup': return 'bg-blue-500';
-      case 'logout': return 'bg-red-500';
-      default: return 'bg-gray-500';
-    }
-  };
+  // TODO: Lấy activityList thực từ API/logs nếu cần
+  // const activityList = ...
 
   return (
     <div className="p-6 space-y-6">
@@ -177,6 +225,8 @@ const CustomerDetails = ({ customer, onTopup }: { customer: Customer | null, onT
             className="p-2 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground"
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
+            onClick={onEdit}
+            title="Chỉnh sửa tài khoản"
           >
             <Edit className="w-5 h-5" />
           </motion.button>
@@ -184,19 +234,43 @@ const CustomerDetails = ({ customer, onTopup }: { customer: Customer | null, onT
             className="p-2 rounded-md hover:bg-secondary text-muted-foreground hover:text-destructive"
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
+            onClick={onDelete}
+            title="Xóa tài khoản"
           >
             <Trash2 className="w-5 h-5" />
+          </motion.button>
+          <motion.button 
+            className="p-2 rounded-md hover:bg-secondary text-muted-foreground hover:text-yellow-500"
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            onClick={onResetPassword}
+            title="Reset mật khẩu về '1'"
+          >
+            <Key className="w-5 h-5" />
           </motion.button>
           <motion.button 
             className="p-2 rounded-md bg-green-100 text-green-700 hover:bg-green-200"
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
             onClick={onTopup}
+            title="Nạp tiền"
           >
             <DollarSign className="w-5 h-5" />
           </motion.button>
         </div>
       </motion.div>
+      {showAccountActions && (
+        <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded flex items-center gap-3">
+          <Key className="w-5 h-5 text-yellow-600" />
+          <button
+            className="text-yellow-800 font-medium hover:underline"
+            onClick={onResetPassword}
+            title="Đặt lại mật khẩu về '1'"
+          >
+            Đặt lại mật khẩu về '1'
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card>
@@ -277,7 +351,7 @@ const CustomerDetails = ({ customer, onTopup }: { customer: Customer | null, onT
           </CardHeader>
           <CardContent>
             <motion.div 
-              className="space-y-3"
+              className="space-y-1 max-h-72 overflow-y-auto"
               initial="hidden"
               animate="visible"
               variants={{
@@ -288,25 +362,20 @@ const CustomerDetails = ({ customer, onTopup }: { customer: Customer | null, onT
                 }
               }}
             >
-              {activityList.map((activity) => (
-                <motion.div 
-                  key={activity.id} 
-                  className="flex items-center py-2 border-b border-border"
-                  variants={{
-                    hidden: { opacity: 0, x: -20 },
-                    visible: { opacity: 1, x: 0 }
-                  }}
-                >
-                  <motion.div 
-                    className={`w-2 h-2 rounded-full ${getActivityColor(activity.type)} mr-3`}
-                    whileHover={{ scale: 1.5 }}
-                  ></motion.div>
-                  <div>
-                    <p className="text-sm text-foreground">{activity.title}</p>
-                    <p className="text-xs text-muted-foreground">{activity.time}</p>
-                  </div>
-                </motion.div>
-              ))}
+              {loadingLogs ? (
+                <div className="flex items-center justify-center py-4">
+                  <svg className="animate-spin h-6 w-6 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                </div>
+              ) : activityLogs.length > 0 ? (
+                activityLogs.map((activity, index) => (
+                  <ActivityItem key={activity.id || index} activity={activity} />
+                ))
+              ) : (
+                <p className="text-center py-4 text-gray-500">Không có hoạt động nào gần đây</p>
+              )}
             </motion.div>
           </CardContent>
         </Card>
@@ -331,7 +400,7 @@ const CustomerRow = ({
   onClick, 
   isSelected 
 }: { 
-  customer: Customer, 
+  customer: CustomerListItem, 
   onClick: () => void, 
   isSelected: boolean 
 }) => {
@@ -359,10 +428,6 @@ const CustomerRow = ({
           <p className="text-sm font-medium text-gray-900">{customer.balance?.toLocaleString('vi-VN')}đ</p>
           <p className="text-xs text-gray-500">Số dư</p>
         </div>
-        <div className="text-center">
-          <p className="text-sm font-medium text-gray-900">{customer.hoursPlayed || 0}h</p>
-          <p className="text-xs text-gray-500">Đã chơi</p>
-        </div>
         <Badge className={getStatusColor(customer.status)}>
           {customer.status === 'active' ? 'Hoạt động' : 
            customer.status === 'suspended' ? 'Đã khóa' : 'Không hoạt động'}
@@ -372,39 +437,538 @@ const CustomerRow = ({
   )
 };
 
+// Thêm component giả lập bot
+const BotSimulator = () => {
+  const [username, setUsername] = useState('');
+  const [amount, setAmount] = useState('');
+  const [message, setMessage] = useState('');
+  const [result, setResult] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setResult(null);
+    setLoading(true);
+
+    try {
+      const amountNum = parseFloat(amount);
+      if (!username || isNaN(amountNum) || amountNum <= 0) {
+        setError('Vui lòng điền đầy đủ thông tin hợp lệ');
+        setLoading(false);
+        return;
+      }
+
+      // Gọi API như bot sẽ gọi
+      const response = await axios.post('http://localhost:3000/api/topup/notify', {
+        username,
+        amount: amountNum,
+        message: message || 'Nạp tiền qua bot'
+      });
+
+      setResult(response.data);
+      // Reset form sau khi thành công
+      if (response.data.success) {
+        setUsername('');
+        setAmount('');
+        setMessage('');
+      }
+    } catch (err: any) {
+      console.error('Error:', err);
+      setError(err.response?.data?.error || err.message || 'Lỗi khi gửi yêu cầu');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Bot className="w-5 h-5 text-blue-500" />
+          Giả lập Bot Nạp Tiền
+        </CardTitle>
+        <CardDescription>Giả lập bot gửi thông báo nạp tiền đến server</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label htmlFor="bot-username" className="block text-sm font-medium text-gray-700 mb-1">
+              Tên người dùng
+            </label>
+            <input
+              id="bot-username"
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              placeholder="Nhập tên người dùng cần nạp tiền"
+            />
+          </div>
+          
+          <div>
+            <label htmlFor="bot-amount" className="block text-sm font-medium text-gray-700 mb-1">
+              Số tiền
+            </label>
+            <input
+              id="bot-amount"
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              placeholder="Nhập số tiền"
+              min="1000"
+            />
+          </div>
+          
+          <div>
+            <label htmlFor="bot-message" className="block text-sm font-medium text-gray-700 mb-1">
+              Ghi chú
+            </label>
+            <input
+              id="bot-message"
+              type="text"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              placeholder="Nội dung ghi chú (không bắt buộc)"
+            />
+          </div>
+          
+          <Button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            {loading ? (
+              <span className="flex items-center justify-center">
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Đang xử lý...
+              </span>
+            ) : (
+              <span className="flex items-center justify-center">
+                <Send className="w-4 h-4 mr-2" />
+                Gửi thông báo nạp tiền
+              </span>
+            )}
+          </Button>
+          
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
+              {error}
+            </div>
+          )}
+          
+          {result && result.success && (
+            <div className="p-3 bg-green-50 border border-green-200 rounded-md text-green-700 text-sm">
+              <p>Nạp tiền thành công!</p>
+              <p className="text-xs mt-1">ID giao dịch: {result.transaction._id}</p>
+            </div>
+          )}
+        </form>
+      </CardContent>
+    </Card>
+  );
+};
+
+// Component theo dõi kết nối
+const ConnectionMonitor = () => {
+  const [socketStatus, setSocketStatus] = useState<'connecting' | 'connected' | 'disconnected'>('disconnected');
+  const [activeConnections, setActiveConnections] = useState<{socketId: string, username: string}[]>([]);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const socketRef = React.useRef<any>(null);
+  
+  // Kiểm tra trạng thái kết nối server
+  useEffect(() => {
+    const checkStatus = async () => {
+      try {
+        const response = await fetch('http://localhost:3000/health');
+        if (response.ok) {
+          setSocketStatus('connected');
+        } else {
+          setSocketStatus('disconnected');
+        }
+      } catch (error) {
+        setSocketStatus('disconnected');
+      }
+    };
+    
+    checkStatus();
+    const interval = setInterval(checkStatus, 5000);
+    
+    return () => clearInterval(interval);
+  }, []);
+  
+  // Lấy dữ liệu giao dịch
+  const fetchTransactions = async () => {
+    setLoading(true);
+    try {
+      const response = await axios.get('http://localhost:3000/api/transactions');
+      if (response.data && response.data.success) {
+        setTransactions(response.data.transactions);
+      }
+    } catch (error) {
+      console.error('Failed to fetch transactions:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Lấy dữ liệu ban đầu và thiết lập kết nối socket
+  useEffect(() => {
+    fetchTransactions();
+    
+    // Kết nối socket để lắng nghe cập nhật
+    try {
+      const socket = io('http://localhost:3000');
+      socketRef.current = socket;
+      
+      // Lắng nghe sự kiện admin notification
+      socket.on('admin:topup-notification', (data) => {
+        console.log('Nhận thông báo admin về nạp tiền:', data);
+        // Cập nhật giao dịch mới ngay lập tức
+        if (data.transaction) {
+          setTransactions(prev => [data.transaction, ...prev]);
+        }
+      });
+      
+      return () => {
+        if (socket) {
+          socket.disconnect();
+        }
+      };
+    } catch (error) {
+      console.error('Error setting up socket connection:', error);
+    }
+  }, []);
+  
+  const handleRefresh = () => {
+    fetchTransactions();
+  };
+  
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Activity className="w-5 h-5 text-purple-500" />
+          <CardTitle>Theo dõi hệ thống</CardTitle>
+        </div>
+        <Button
+          onClick={handleRefresh}
+          size="sm"
+          variant="outline"
+          className="h-8 w-8 p-0"
+          disabled={loading}
+        >
+          {loading ? (
+            <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+          ) : (
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+            </svg>
+          )}
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center gap-2">
+          <div className={`w-3 h-3 rounded-full ${
+            socketStatus === 'connected' ? 'bg-green-500' : 
+            socketStatus === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
+          }`}></div>
+          <p className="text-sm">
+            Trạng thái server: {
+              socketStatus === 'connected' ? 'Đang hoạt động' : 
+              socketStatus === 'connecting' ? 'Đang kết nối' : 'Không kết nối'
+            }
+          </p>
+          {socketStatus === 'connected' ? 
+            <Wifi className="w-4 h-4 text-green-500" /> : 
+            <WifiOff className="w-4 h-4 text-red-500" />
+          }
+        </div>
+        
+        <div>
+          <h3 className="text-sm font-medium mb-2 flex items-center">
+            <Database className="w-4 h-4 mr-1 text-blue-500" />
+            Giao dịch gần đây
+          </h3>
+          <div className="max-h-40 overflow-y-auto border rounded-md">
+            {transactions.length > 0 ? (
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Người dùng</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Số tiền</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Ngày</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {transactions.map((tx: any, index) => (
+                    <tr key={tx._id || index}>
+                      <td className="px-3 py-2 text-sm text-gray-900">{tx.username}</td>
+                      <td className="px-3 py-2 text-sm text-gray-900">{tx.amount?.toLocaleString()} VND</td>
+                      <td className="px-3 py-2 text-sm text-gray-500">
+                        {new Date(tx.createdAt).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p className="text-sm text-gray-500 p-3 text-center">Chưa có giao dịch nào</p>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
 const Customers = () => {
+  console.log('Customers component rendered');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<'all' | 'active' | 'suspended' | 'inactive'>('all');
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerDetail | null>(null);
   const [modalAdd, setModalAdd] = useState(false);
   const [modalTopup, setModalTopup] = useState(false);
   const [topupAmount, setTopupAmount] = useState('');
-  const [customers, setCustomers] = useState(mockCustomers);
+  const [customers, setCustomers] = useState<CustomerListItem[]>([]);
+  const [showTestingTools, setShowTestingTools] = useState(false);
+  const [topupLoading, setTopupLoading] = useState(false);
+  const [topupError, setTopupError] = useState<string | null>(null);
+  const [topupResult, setTopupResult] = useState<any>(null);
+  const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [modalEdit, setModalEdit] = useState(false);
+  const [modalDelete, setModalDelete] = useState(false);
+  const [editCustomerForm, setEditCustomerForm] = useState<{
+    name: string;
+    email: string;
+    phone: string;
+    address: string;
+    dob: string;
+    status: CustomerStatus;
+  }>({
+    name: '',
+    email: '',
+    phone: '',
+    address: '',
+    dob: '',
+    status: 'active'
+  });
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  const filteredCustomers = customers.filter(customer => {
+  // Các gói nạp tiền có sẵn
+  const predefinedPackages = [
+    { amount: 10000, label: '10.000đ' },
+    { amount: 20000, label: '20.000đ' },
+    { amount: 50000, label: '50.000đ' },
+    { amount: 100000, label: '100.000đ' },
+    { amount: 200000, label: '200.000đ' },
+  ];
+  
+  // Set số tiền dựa vào gói được chọn
+  const selectPackage = (amount: number) => {
+    setTopupAmount(amount.toString());
+  };
+
+  // Lấy danh sách khách hàng thật khi vào trang
+  useEffect(() => {
+    customerService.getCustomers().then(setCustomers);
+  }, []);
+
+  // Lọc danh sách
+  const filteredCustomers = customers.filter((customer: CustomerListItem) => {
     const matchesSearch = customer.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                         customer.email.toLowerCase().includes(searchQuery.toLowerCase());
+      customer.email.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = selectedStatus === 'all' || customer.status === selectedStatus;
     return matchesSearch && matchesStatus;
   });
 
-  const handleTopup = () => {
+  // Khi click vào 1 khách hàng, lấy detail
+  const handleSelectCustomer = async (customer: CustomerListItem) => {
+    const detail = await customerService.getCustomerDetail(customer.id);
+    setSelectedCustomer(detail);
+    
+    if (detail) {
+      setEditCustomerForm({
+        name: detail.name,
+        email: detail.email,
+        phone: detail.phone || '',
+        address: detail.address || '',
+        dob: detail.dob || '',
+        status: detail.status as CustomerStatus
+      });
+    }
+  };
+
+  const handleTopup = async () => {
     if (!selectedCustomer) return;
     const amount = parseInt(topupAmount, 10);
     if (isNaN(amount) || amount <= 0) return;
     
-    const updatedCustomers = customers.map(c => {
-      if (c.id === selectedCustomer.id) {
-        const balance = (c.balance || 0) + amount;
-        return { ...c, balance, totalSpent: c.totalSpent + amount };
-      }
-      return c;
-    });
+    setTopupLoading(true);
+    setTopupError(null);
+    setTopupResult(null);
     
-    setCustomers(updatedCustomers);
-    setSelectedCustomer(prev => prev ? { ...prev, balance: (prev.balance || 0) + amount, totalSpent: prev.totalSpent + amount } : prev);
-    setModalTopup(false);
-    setTopupAmount('');
+    try {
+      console.log(`Đang gửi nạp tiền cho username: ${selectedCustomer.name}`);
+      
+      // Sử dụng IPC thay vì gọi API HTTP
+      const result = await ipcRenderer.invoke('process-topup', {
+        username: selectedCustomer.name,
+        amount: amount,
+        message: `Nạp tiền từ admin cho ${selectedCustomer.name}`
+      });
+      
+      if (result && result.success) {
+        console.log('Nạp tiền thành công:', result);
+        
+        // Cập nhật local state
+        const updatedCustomers = customers.map((c: CustomerListItem) => {
+          if (c.id === selectedCustomer.id) {
+            const balance = (c.balance || 0) + amount;
+            return { ...c, balance };
+          }
+          return c;
+        });
+        
+        setCustomers(updatedCustomers);
+        setSelectedCustomer(prev => prev ? { 
+          ...prev, 
+          balance: (prev.balance || 0) + amount, 
+          totalSpent: prev.totalSpent + amount 
+        } : null);
+        
+        setTopupResult(result);
+        // Đợi 1.5 giây để cho người dùng thấy kết quả thành công
+        setTimeout(() => {
+          setModalTopup(false);
+          setTopupAmount('');
+          setTopupResult(null);
+        }, 1500);
+      } else {
+        setTopupError(result.error || 'Lỗi không xác định');
+      }
+    } catch (error: any) {
+      console.error('Error processing topup:', error);
+      setTopupError(error.message || 'Lỗi khi nạp tiền');
+    } finally {
+      setTopupLoading(false);
+    }
+  };
+
+  // Hàm reset password
+  const handleResetPassword = async () => {
+    if (!selectedCustomer) return;
+    try {
+      const result = await ipcRenderer.invoke('customers:resetPassword', selectedCustomer.id);
+      if (result && result.success) {
+        setNotification({ type: 'success', message: 'Đã đặt lại mật khẩu về "1"' });
+      } else {
+        setNotification({ type: 'error', message: result.error || 'Không thể đặt lại mật khẩu' });
+      }
+    } catch (error) {
+      setNotification({ type: 'error', message: 'Không thể đặt lại mật khẩu. Vui lòng thử lại sau.' });
+    }
+  };
+
+  // Xử lý khi nhấn nút Edit
+  const handleEditModal = () => {
+    if (selectedCustomer) {
+      setEditCustomerForm({
+        name: selectedCustomer.name,
+        email: selectedCustomer.email,
+        phone: selectedCustomer.phone || '',
+        address: selectedCustomer.address || '',
+        dob: selectedCustomer.dob || '',
+        status: selectedCustomer.status as CustomerStatus
+      });
+      setModalEdit(true);
+    }
+  };
+
+  // Xử lý khi lưu chỉnh sửa
+  const handleSaveCustomer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCustomer) return;
+    
+    try {
+      // Gọi IPC để cập nhật thông tin khách hàng
+      const result = await ipcRenderer.invoke('customers:update', 
+        selectedCustomer.id, 
+        editCustomerForm
+      );
+      
+      if (result && result.success) {
+        // Cập nhật thông tin khách hàng trong state
+        if (result.customer && selectedCustomer) {
+          setSelectedCustomer({
+            ...selectedCustomer,
+            name: result.customer.name,
+            email: result.customer.email,
+            phone: result.customer.phone,
+            address: result.customer.address,
+            dob: result.customer.dob,
+            status: result.customer.status as CustomerStatus
+          });
+        }
+        
+        // Cập nhật danh sách khách hàng
+        setCustomers(prev => prev.map(c => {
+          if (c.id === selectedCustomer.id) {
+            return { 
+              ...c, 
+              name: editCustomerForm.name, 
+              email: editCustomerForm.email,
+              status: editCustomerForm.status
+            };
+          }
+          return c;
+        }));
+        
+        setModalEdit(false);
+        setNotification({ type: 'success', message: 'Đã cập nhật thông tin khách hàng' });
+      } else {
+        setNotification({ type: 'error', message: result.error || 'Không thể cập nhật khách hàng' });
+      }
+    } catch (error: any) {
+      console.error('Error updating customer:', error);
+      setNotification({ type: 'error', message: error.message || 'Lỗi khi cập nhật thông tin khách hàng' });
+    }
+  };
+
+  // Xử lý khi xác nhận xóa khách hàng
+  const handleDeleteCustomer = async () => {
+    if (!selectedCustomer) return;
+    setIsDeleting(true);
+    
+    try {
+      // Gọi IPC để xóa khách hàng
+      const result = await ipcRenderer.invoke('customers:delete', selectedCustomer.id);
+      
+      if (result && result.success) {
+        // Cập nhật danh sách khách hàng
+        setCustomers(prev => prev.filter(c => c.id !== selectedCustomer.id));
+        setSelectedCustomer(null);
+        setModalDelete(false);
+        setNotification({ type: 'success', message: 'Đã xóa khách hàng' });
+      } else {
+        setNotification({ type: 'error', message: result.error || 'Không thể xóa khách hàng' });
+      }
+    } catch (error: any) {
+      console.error('Error deleting customer:', error);
+      setNotification({ type: 'error', message: error.message || 'Lỗi khi xóa khách hàng' });
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   return (
@@ -455,7 +1019,7 @@ const Customers = () => {
               <div>
                 <p className="text-sm font-medium text-gray-600">Đang hoạt động</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {customers.filter(c => c.status === 'active').length}
+                  {customers.filter((c: CustomerListItem) => c.status === 'active').length}
                 </p>
               </div>
               <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
@@ -470,9 +1034,7 @@ const Customers = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Tổng doanh thu</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {customers.reduce((sum, c) => sum + c.totalSpent, 0).toLocaleString('vi-VN')}đ
-                </p>
+                <p className="text-2xl font-bold text-gray-900">0đ</p>
               </div>
               <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
                 <DollarSign className="w-6 h-6 text-purple-600" />
@@ -486,9 +1048,7 @@ const Customers = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Cấp độ trung bình</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {Math.round(customers.reduce((sum, c) => sum + (c.level || 0), 0) / customers.length)}
-                </p>
+                <p className="text-2xl font-bold text-gray-900">0</p>
               </div>
               <div className="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center">
                 <Star className="w-6 h-6 text-yellow-600" />
@@ -556,11 +1116,11 @@ const Customers = () => {
                       Không tìm thấy khách hàng
                     </div>
                   ) : (
-                    filteredCustomers.map((customer) => (
+                    filteredCustomers.map((customer: CustomerListItem) => (
                       <CustomerRow 
                         key={customer.id} 
                         customer={customer} 
-                        onClick={() => setSelectedCustomer(customer)}
+                        onClick={() => handleSelectCustomer(customer)}
                         isSelected={selectedCustomer?.id === customer.id}
                       />
                     ))
@@ -576,13 +1136,17 @@ const Customers = () => {
                 <AnimatePresence>
                   <motion.div
                     key={selectedCustomer?.id || 'empty'}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0 }}
+                    transition={{ duration: 0.3 }}
                   >
                     <CustomerDetails 
                       customer={selectedCustomer} 
                       onTopup={() => setModalTopup(true)} 
+                      onResetPassword={handleResetPassword}
+                      onEdit={handleEditModal}
+                      onDelete={() => setModalDelete(true)}
                     />
                   </motion.div>
                 </AnimatePresence>
@@ -592,13 +1156,117 @@ const Customers = () => {
         </div>
       </motion.div>
 
+      {/* Testing tools toggle */}
+      <div className="flex justify-center mt-8">
+        <Button 
+          onClick={() => setShowTestingTools(prev => !prev)}
+          className="bg-gray-200 hover:bg-gray-300 text-gray-800"
+        >
+          {showTestingTools ? "Ẩn công cụ kiểm thử" : "Hiển thị công cụ kiểm thử"}
+        </Button>
+      </div>
+      
+      {/* Testing tools */}
+      {showTestingTools && (
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          exit={{ opacity: 0, height: 0 }}
+        >
+          <div className="border-t-2 border-dashed border-gray-300 pt-6 mt-6">
+            <h2 className="text-xl font-bold mb-6 text-center">Công cụ kiểm thử nạp tiền</h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Bot simulator */}
+              <div className="md:col-span-1">
+                <BotSimulator />
+              </div>
+              
+              {/* User client simulator */}
+              <div className="md:col-span-1">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <UserRound className="w-5 h-5 text-green-500" />
+                      Mô phỏng Client
+                    </CardTitle>
+                    <CardDescription>Giao diện người dùng để kiểm tra nhận thông báo</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <UserTopUpTester />
+                  </CardContent>
+                </Card>
+              </div>
+              
+              {/* Connection monitor */}
+              <div className="md:col-span-1">
+                <ConnectionMonitor />
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
+      
       {/* Modals */}
       <Modal open={modalAdd} onClose={() => setModalAdd(false)} title="Thêm khách hàng mới">
-        <form className="space-y-4">
-          <input className="w-full px-3 py-2 bg-white border border-border rounded text-foreground" placeholder="Tên khách hàng" />
-          <input className="w-full px-3 py-2 bg-white border border-border rounded text-foreground" placeholder="Email" />
-          <input className="w-full px-3 py-2 bg-white border border-border rounded text-foreground" placeholder="Số điện thoại" />
-          <input className="w-full px-3 py-2 bg-white border border-border rounded text-foreground" placeholder="Ngày đăng ký (dd/mm/yyyy)" />
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="p-2"
+        >
+          <p className="text-sm text-gray-500 mb-4">
+            Chỉ cần nhập tên đăng nhập và mật khẩu. 
+            Các thông tin chi tiết khác có thể thêm sau khi tạo tài khoản.
+          </p>
+          <form onSubmit={async (e) => {
+            e.preventDefault();
+            const form = e.currentTarget;
+            const formData = new FormData(form);
+            const username = formData.get('username') as string;
+            const password = formData.get('password') as string;
+            if (!username || !password) return;
+            try {
+              const newCustomer = await customerService.createCustomer(username, password);
+              if (newCustomer) {
+                const updatedList = await customerService.getCustomers();
+                setCustomers(updatedList);
+                setModalAdd(false);
+                setNotification({ type: 'success', message: `Đã tạo khách hàng mới: ${username}` });
+              } else {
+                setNotification({ type: 'error', message: 'Lỗi: Không thể tạo khách hàng mới' });
+              }
+            } catch (error) {
+              console.error('Error creating customer:', error);
+              setNotification({ type: 'error', message: 'Không thể tạo khách hàng mới. Vui lòng thử lại sau.' });
+            }
+          }} className="space-y-4">
+            <div>
+              <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1">
+                Tên đăng nhập <span className="text-red-500">*</span>
+              </label>
+              <input 
+                id="username"
+                name="username"
+                required
+                className="w-full px-3 py-2 bg-white border border-border rounded text-foreground" 
+                placeholder="Nhập tên đăng nhập"
+              />
+            </div>
+            
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+                Mật khẩu <span className="text-red-500">*</span>
+              </label>
+              <input 
+                type="password"
+                id="password"
+                name="password"
+                required
+                className="w-full px-3 py-2 bg-white border border-border rounded text-foreground" 
+                placeholder="Nhập mật khẩu"
+              />
+            </div>
+            
           <div className="flex justify-end gap-2">
             <motion.button 
               type="button" 
@@ -615,28 +1283,272 @@ const Customers = () => {
               whileHover={{ y: -2 }}
               whileTap={{ scale: 0.95 }}
             >
-              Lưu
+                Tạo
             </motion.button>
           </div>
         </form>
+        </motion.div>
       </Modal>
-      <Modal open={modalTopup} onClose={() => setModalTopup(false)} title="Nạp tiền cho khách hàng">
-        <form onSubmit={e => { e.preventDefault(); handleTopup(); }} className="space-y-4">
-          <input
-            className="w-full px-3 py-2 bg-white border border-border rounded text-foreground"
-            placeholder="Số tiền nạp (VND)"
-            type="number"
-            min="1000"
-            value={topupAmount}
-            onChange={e => setTopupAmount(e.target.value)}
-            required
-          />
-          <div className="flex justify-end gap-2">
-            <button type="button" className="px-4 py-2 bg-gray-200 text-foreground rounded" onClick={() => setModalTopup(false)}>Hủy</button>
-            <button type="submit" className="px-4 py-2 bg-blue-500 text-white rounded">Nạp</button>
+      <Modal open={modalTopup} onClose={() => setModalTopup(false)} title={`Nạp tiền cho ${selectedCustomer?.name || 'khách hàng'}`}>
+        <form onSubmit={e => { e.preventDefault(); handleTopup(); }} className="space-y-5">
+          <div>
+            <label htmlFor="topup-amount" className="block text-sm font-medium text-gray-700 mb-1">
+              Chọn gói nạp tiền có sẵn
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {predefinedPackages.map((pkg) => (
+                <motion.button
+                  key={pkg.amount}
+                  type="button"
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => selectPackage(pkg.amount)}
+                  className={`p-2 border rounded-md text-center transition-colors ${
+                    Number(topupAmount) === pkg.amount
+                      ? 'bg-primary text-white border-primary'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  {pkg.label}
+                </motion.button>
+              ))}
+            </div>
           </div>
+          
+          <div className="relative">
+            <label htmlFor="topup-amount" className="block text-sm font-medium text-gray-700 mb-1">
+              Hoặc nhập số tiền tùy chọn (VND)
+            </label>
+            <div className="flex items-center">
+            <input
+              id="topup-amount"
+                className="w-full px-3 py-2 bg-white border border-border rounded-md text-foreground"
+              placeholder="Số tiền nạp (VND)"
+              type="number"
+              min="1000"
+              step="1000"
+              value={topupAmount}
+              onChange={e => setTopupAmount(e.target.value)}
+              required
+              disabled={topupLoading}
+            />
+            </div>
+            <p className="text-xs text-gray-500 mt-1">Tối thiểu 1.000đ</p>
+          </div>
+          
+          <div className="flex justify-end gap-2">
+            <button 
+              type="button" 
+              className="px-4 py-2 bg-gray-200 text-foreground rounded hover:bg-gray-300" 
+              onClick={() => setModalTopup(false)}
+              disabled={topupLoading}
+            >
+              Hủy
+            </button>
+            <button 
+              type="submit" 
+              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 flex items-center"
+              disabled={topupLoading || !topupAmount || Number(topupAmount) < 1000}
+            >
+              {topupLoading ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Đang xử lý...
+                </>
+              ) : (
+                <>
+                  <DollarSign className="w-4 h-4 mr-2" />
+                  Nạp {topupAmount ? Number(topupAmount).toLocaleString() : 0}đ
+                </>
+              )}
+            </button>
+          </div>
+          
+          {topupError && (
+            <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-md mt-3">
+              {topupError}
+            </div>
+          )}
+          
+          {topupResult && topupResult.success && (
+            <div className="p-3 bg-green-50 border border-green-200 text-green-700 rounded-md mt-3">
+              <p className="font-medium">Nạp tiền thành công!</p>
+              <p className="text-sm">ID giao dịch: {topupResult.transaction._id}</p>
+              <p className="text-sm">Số tiền: {Number(topupAmount).toLocaleString()} VND</p>
+              <p className="text-sm mt-1">Thông báo đã được gửi đến khách hàng.</p>
+            </div>
+          )}
         </form>
       </Modal>
+      <Modal open={modalEdit} onClose={() => setModalEdit(false)} title={`Chỉnh sửa thông tin: ${selectedCustomer?.name}`}>
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="p-2"
+        >
+          <form onSubmit={handleSaveCustomer} className="space-y-4">
+            <div>
+              <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+                Tên người dùng <span className="text-red-500">*</span>
+              </label>
+              <input 
+                id="name"
+                name="name"
+                value={editCustomerForm.name}
+                onChange={(e) => setEditCustomerForm({...editCustomerForm, name: e.target.value})}
+                required
+                className="w-full px-3 py-2 bg-white border border-border rounded text-foreground"
+              />
+            </div>
+            
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+                Email <span className="text-red-500">*</span>
+              </label>
+              <input 
+                id="email"
+                name="email"
+                type="email"
+                value={editCustomerForm.email}
+                onChange={(e) => setEditCustomerForm({...editCustomerForm, email: e.target.value})}
+                required
+                className="w-full px-3 py-2 bg-white border border-border rounded text-foreground"
+              />
+            </div>
+            
+            <div>
+              <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
+                Số điện thoại
+              </label>
+              <input 
+                id="phone"
+                name="phone"
+                value={editCustomerForm.phone}
+                onChange={(e) => setEditCustomerForm({...editCustomerForm, phone: e.target.value})}
+                className="w-full px-3 py-2 bg-white border border-border rounded text-foreground"
+              />
+            </div>
+            
+            <div>
+              <label htmlFor="address" className="block text-sm font-medium text-gray-700 mb-1">
+                Địa chỉ
+              </label>
+              <input 
+                id="address"
+                name="address"
+                value={editCustomerForm.address}
+                onChange={(e) => setEditCustomerForm({...editCustomerForm, address: e.target.value})}
+                className="w-full px-3 py-2 bg-white border border-border rounded text-foreground"
+              />
+            </div>
+            
+            <div>
+              <label htmlFor="dob" className="block text-sm font-medium text-gray-700 mb-1">
+                Ngày sinh
+              </label>
+              <input 
+                id="dob"
+                name="dob"
+                type="date"
+                value={editCustomerForm.dob}
+                onChange={(e) => setEditCustomerForm({...editCustomerForm, dob: e.target.value})}
+                className="w-full px-3 py-2 bg-white border border-border rounded text-foreground"
+              />
+            </div>
+            
+            <div>
+              <label htmlFor="status" className="block text-sm font-medium text-gray-700 mb-1">
+                Trạng thái
+              </label>
+              <select
+                id="status"
+                name="status"
+                value={editCustomerForm.status}
+                onChange={(e) => setEditCustomerForm({...editCustomerForm, status: e.target.value as CustomerStatus})}
+                className="w-full px-3 py-2 bg-white border border-border rounded text-foreground"
+              >
+                <option value="active">Đang hoạt động</option>
+                <option value="suspended">Đã khóa</option>
+                <option value="inactive">Không hoạt động</option>
+              </select>
+            </div>
+            
+            <div className="flex justify-end gap-2 mt-4">
+              <button 
+                type="button" 
+                className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
+                onClick={() => setModalEdit(false)}
+              >
+                Hủy
+              </button>
+              <button 
+                type="submit"
+                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+              >
+                Lưu thay đổi
+              </button>
+            </div>
+          </form>
+        </motion.div>
+      </Modal>
+      <Modal open={modalDelete} onClose={() => !isDeleting && setModalDelete(false)} title="Xác nhận xóa khách hàng">
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="p-2"
+        >
+          <div className="text-center">
+            <div className="w-16 h-16 mx-auto mb-4 bg-red-100 rounded-full flex items-center justify-center">
+              <Trash2 className="w-8 h-8 text-red-600" />
+            </div>
+            <p className="mb-4 text-gray-700">
+              Bạn có chắc chắn muốn xóa khách hàng <span className="font-semibold">{selectedCustomer?.name}</span>?
+              <br />
+              <span className="text-sm text-gray-500">Thao tác này không thể hoàn tác.</span>
+            </p>
+          </div>
+          
+          <div className="flex justify-center gap-3 mt-4">
+            <button 
+              className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
+              onClick={() => setModalDelete(false)}
+              disabled={isDeleting}
+            >
+              Hủy bỏ
+            </button>
+            <button 
+              className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 flex items-center"
+              onClick={handleDeleteCustomer}
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Đang xử lý...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Xóa khách hàng
+                </>
+              )}
+            </button>
+          </div>
+        </motion.div>
+      </Modal>
+      {notification && (
+        <SystemNotification
+          type={notification.type}
+          message={notification.message}
+          onClose={() => setNotification(null)}
+        />
+      )}
     </div>
   );
 };

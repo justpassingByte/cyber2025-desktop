@@ -20,30 +20,39 @@ import {
 } from '../../components/icons';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../../components/ThemeProvider';
+import { useUserStore } from '../../context/UserContext';
+
+
 
 export function Dashboard() {
-  const [username, setUsername] = React.useState('');
-  const [timeRemaining, setTimeRemaining] = React.useState(3 * 60 * 60); // 3 hours
-  const [balance, setBalance] = React.useState(245000); // VND
-  const [rank] = React.useState('Pro Gamer');
-  const [dailyStreak] = React.useState(7);
+  const user = useUserStore((state) => state.user);
   const navigate = useNavigate();
   const { theme } = useTheme();
-  
+  const [username, setUsername] = React.useState('');
+  const [timeRemaining, setTimeRemaining] = React.useState(0);
+  const [balance, setBalance] = React.useState(0);
+  const [rank, setRank] = React.useState('');
+  const [dailyStreak, setDailyStreak] = React.useState(0);
+
   React.useEffect(() => {
-    const userStr = localStorage.getItem('user');
-    if (!userStr) {
-      navigate('/');
+    if (!user) {
+      navigate('/'); // Nếu không có user, quay về login
       return;
     }
-    try {
-      const user = JSON.parse(userStr);
-      setUsername(user.username || 'User');
-    } catch (err) {
-      setUsername('User');
-    }
-  }, [navigate]);
-  
+    
+    // Log only once when component mounts or when user changes
+    console.log("Dashboard received user:", JSON.stringify(user));
+    
+    setUsername(user.username || 'User');
+    setBalance(user.balance || 0);
+    setTimeRemaining(user.timeRemaining || 0);
+    setRank(user.rank || 'New Gamer');
+    setDailyStreak(user.dailyStreak || 0);
+    
+    // Don't log every render - this contributes to console spam
+    // console.log("Dashboard state after setting values:", {...});
+  }, [user, navigate]);
+
   // Format time remaining as HH:MM:SS
   const formatTimeRemaining = () => {
     const hours = Math.floor(timeRemaining / 3600);
@@ -51,7 +60,7 @@ export function Dashboard() {
     const seconds = timeRemaining % 60;
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   };
-  
+
   React.useEffect(() => {
     if (timeRemaining <= 0) return;
     const timer = setInterval(() => {
@@ -59,7 +68,7 @@ export function Dashboard() {
     }, 1000);
     return () => clearInterval(timer);
   }, [timeRemaining]);
-  
+
   // Animation variants
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -72,7 +81,11 @@ export function Dashboard() {
     hidden: { opacity: 0, y: 20 },
     visible: { opacity: 1, y: 0 },
   };
-  
+
+  if (!user) return null;
+
+  console.log('Dashboard user:', user);
+
   return (
     <div className="p-6 space-y-6">
       {/* Welcome Section */}
@@ -403,11 +416,11 @@ export function Dashboard() {
                   <p className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-slate-600'}`}>
                     Yesterday
                   </p>
-          </div>
+                </div>
                 <Badge className={`${theme === 'dark' ? 'bg-green-500/20 text-green-400' : 'bg-green-500/10 text-green-600'}`}>
                   New
                 </Badge>
-          </div>
+              </div>
             </CardContent>
           </Card>
         </motion.div>

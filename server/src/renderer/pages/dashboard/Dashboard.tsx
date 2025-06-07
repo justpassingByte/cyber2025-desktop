@@ -26,6 +26,7 @@ import {
   ActivityCard,
   ActivityItem
 } from '../../components/ui';
+import TopUpTester from '../../components/TopUpTester';
 
 console.log('Dashboard module loading...');
 

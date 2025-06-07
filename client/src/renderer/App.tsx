@@ -4,18 +4,22 @@ import { Dashboard } from './pages/dashboard/Dashboard';
 import { Login } from './pages/Login';
 import { ThemeProvider } from './components/ThemeProvider';
 import { Layout } from './components/Layout';
-import  Recharge  from './pages/recharge/page';
-import  Food  from './pages/food/page';
-import  Reserve  from './pages/reserve/page';
-import  Tournaments  from './pages/tournaments/page';
-import  Rewards  from './pages/rewards/page';
-import  Machine  from './pages/machine/page';
-import  Profile  from './pages/profile/page';
-import  Chat  from './pages/chat/page';
+import Recharge from './pages/recharge/page';
+import Food from './pages/food/page';
+import Reserve from './pages/reserve/page';
+import Tournaments from './pages/tournaments/page';
+import Rewards from './pages/rewards/page';
+import Machine from './pages/machine/page';
+import Profile from './pages/profile/page';
+import Chat from './pages/chat/page';
+import NotificationManager from './components/NotificationManager';
+
 export function App() {
   return (
     <ThemeProvider defaultTheme="system" storageKey="theme">
       <Router>
+        <NotificationManager />
+        
         <Routes>
           <Route path="/" element={<Login />} />
           <Route path="/dashboard" element={
@@ -30,37 +34,37 @@ export function App() {
           } />
           <Route path="/food" element={
             <Layout>
-             <Food />
+              <Food />
             </Layout>
           } />
           <Route path="/reserve" element={
             <Layout>
-             <Reserve />
+              <Reserve />
             </Layout>
           } />
           <Route path="/tournaments" element={
             <Layout>
-             <Tournaments />
+              <Tournaments />
             </Layout>
           } />
           <Route path="/rewards" element={
             <Layout>
-             <Rewards />
+              <Rewards />
             </Layout>
           } />
           <Route path="/machine" element={
             <Layout>
-             <Machine />
+              <Machine />
             </Layout>
           } />
           <Route path="/profile" element={
             <Layout>
-             <Profile />
+              <Profile />
             </Layout>
           } />
           <Route path="/chat" element={
             <Layout>
-             <Chat />
+              <Chat />
             </Layout>
           } />
         </Routes>

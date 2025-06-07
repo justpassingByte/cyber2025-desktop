@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Link, useLocation, Outlet } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Users, 
@@ -17,6 +17,7 @@ import {
 import { Badge } from './components/ui/badge';
 import { Avatar, AvatarFallback } from './components/ui/avatar';
 import { Button } from './components/ui/button';
+import NotificationManager from './components/NotificationManager';
 
 // Import pages
 import Dashboard from './pages/dashboard/Dashboard';
@@ -113,14 +114,16 @@ interface NavItem {
 
 const navigation: NavItem[] = [
   { name: 'Dashboard', href: '/', icon: BarChart3 },
-  { name: 'Khách hàng', href: '/customers', icon: Users },
-  { name: 'Đồ ăn & Nước uống', href: '/food', icon: UtensilsCrossed },
-  { name: 'Trò chơi', href: '/games', icon: Gamepad2 },
-  { name: 'Phòng máy', href: '/room', icon: Monitor },
-  { name: 'Cài đặt', href: '/settings', icon: Settings },
+  { name: 'Khách hàng', href: 'customers', icon: Users },
+  { name: 'Đồ ăn & Nước uống', href: 'food', icon: UtensilsCrossed },
+  { name: 'Trò chơi', href: 'games', icon: Gamepad2 },
+  { name: 'Phòng máy', href: 'room', icon: Monitor },
+  { name: 'Cài đặt', href: 'settings', icon: Settings },
 ];
 
 const SidebarContent = ({ pathname, onClose }: { pathname: string; onClose?: () => void }) => {
+  console.log("SidebarContent received pathname:", pathname);
+  
   return (
     <div className="flex flex-col h-full">
       {/* Logo */}
@@ -141,9 +144,12 @@ const SidebarContent = ({ pathname, onClose }: { pathname: string; onClose?: () 
       {/* Navigation */}
       <nav className="flex-1 px-4 py-6 space-y-2">
         {navigation.map((item) => {
-          const isActive = 
-            (item.href === "/" && pathname === "/") ||
-            (item.href !== "/" && (pathname === item.href || pathname.startsWith(item.href + "/")));
+          // Fix active state detection for HashRouter
+          const isActive = pathname === item.href || 
+                          (item.href !== '/' && pathname.includes(item.href));
+          
+          console.log(`Nav item ${item.name}: href=${item.href}, pathname=${pathname}, isActive=${isActive}`);
+          
           const Icon = item.icon;
           return (
             <Link key={item.name} to={item.href} onClick={onClose}>
@@ -196,7 +202,11 @@ const RouteListener = () => {
   const location = useLocation();
   
   useEffect(() => {
-    console.log('Current route:', location.pathname);
+    // Add more detailed logging to diagnose the routing issue
+    console.log('Current route pathname:', location.pathname);
+    console.log('Current route hash:', location.hash);
+    console.log('Current route search:', location.search);
+    console.log('Full location object:', location);
   }, [location]);
   
   return null;
@@ -206,10 +216,22 @@ const MainLayout = () => {
   const location = useLocation();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Mock user info - in a real app, this would come from authentication
+  const userInfo = {
+    username: "admin",
+    isAdmin: true
+  };
+
+  // Add debugging for HashRouter pathname
+  useEffect(() => {
+    console.log("MainLayout detected pathname:", location.pathname);
+  }, [location.pathname]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <RouteListener />
+      {/* Global notification manager */}
+      <NotificationManager username={userInfo.username} isAdmin={userInfo.isAdmin} />
       {/* Mobile sidebar overlay */}
       <AnimatePresence>
         {sidebarOpen && (
@@ -251,7 +273,7 @@ const MainLayout = () => {
               <h1 className="text-xl font-semibold text-gray-900">
                 {navigation.find((item) => 
                   item.href === "/" && location.pathname === "/" ? true : 
-                  item.href !== "/" && location.pathname.startsWith(item.href)
+                  item.href !== "/" && location.pathname.includes(item.href)
                 )?.name || "Dashboard"}
               </h1>
             </div>
@@ -275,15 +297,7 @@ const MainLayout = () => {
         >
           <ErrorBoundary>
             <AnimatePresence mode="wait">
-              <Routes location={location} key={location.pathname}>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/customers" element={<ErrorBoundary><CustomersPage /></ErrorBoundary>} />
-                <Route path="/room" element={<ErrorBoundary><RoomPage /></ErrorBoundary>} />
-                <Route path="/games" element={<ErrorBoundary><GamesPage /></ErrorBoundary>} />
-                <Route path="/food" element={<ErrorBoundary><FoodPage /></ErrorBoundary>} />
-                <Route path="/settings" element={<ErrorBoundary><SettingsPage /></ErrorBoundary>} />
-                <Route path="*" element={<Dashboard />} />
-              </Routes>
+              <Outlet />
             </AnimatePresence>
           </ErrorBoundary>
         </motion.main>
@@ -293,9 +307,25 @@ const MainLayout = () => {
 };
 
 const App: React.FC = () => {
+  useEffect(() => {
+    console.log('App mounted with HashRouter - should show URLs with #/ format');
+  }, []);
+
+  // Use more direct routing approach
   return (
     <Router>
-      <MainLayout />
+      <Routes>
+        {/* Main routes with layout */}
+        <Route path="/" element={<MainLayout />}>
+          <Route index element={<Dashboard />} />
+          <Route path="customers" element={<ErrorBoundary><CustomersPage /></ErrorBoundary>} />
+          <Route path="room" element={<ErrorBoundary><RoomPage /></ErrorBoundary>} />
+          <Route path="games" element={<ErrorBoundary><GamesPage /></ErrorBoundary>} />
+          <Route path="food" element={<ErrorBoundary><FoodPage /></ErrorBoundary>} />
+          <Route path="settings" element={<ErrorBoundary><SettingsPage /></ErrorBoundary>} />
+          <Route path="*" element={<div className="p-6"><h2>Page not found</h2></div>} />
+        </Route>
+      </Routes>
     </Router>
   );
 };
