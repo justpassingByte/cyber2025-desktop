@@ -2,8 +2,9 @@ import { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain } from 'electron';
 import * as path from 'path';
 // import * as socketIO from 'socket.io-client'; // Xóa dòng này
 import { setupSocketClient, isConnected, getSocket } from './services/socket';
-import { setupAuthSocketHandlers } from './services/authSocket';
+import { setupAllAuthHandlers } from './services/authSocket';
 import { setupNotiSocketHandlers } from './services/notiSocket';
+import { setupSessionSocketHandlers } from './services/sessionSocket';
 // Thay đổi cách phát hiện development mode để đảm bảo chính xác hơn
 const isDev = process.env.NODE_ENV === 'development' || process.env.DEBUG_PROD === 'true';
 console.log('Running in development mode?', isDev);
@@ -209,14 +210,13 @@ app.whenReady().then(() => {
   
   // Khởi tạo Socket.IO client
   setupSocketClient(mainWindow);
-  setupAuthSocketHandlers();
+  setupAllAuthHandlers();
   setupNotiSocketHandlers(mainWindow);
+  setupSessionSocketHandlers(mainWindow);
   
   // Thiết lập IPC handlers
   setupIpcHandlers();
-  
-  // Thiết lập auth handlers
-  // authService.setupAuthHandlers(); // Xóa dòng này nếu không còn cần
+
 });
 
 // Quit when all windows are closed.

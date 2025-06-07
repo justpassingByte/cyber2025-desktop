@@ -5,6 +5,8 @@ This is the client application for the cybercafe management system, built with E
 ## Features
 
 - Login & authentication system (via IPC, communicates with server app via socket.io)
+- **Hybrid Real-time Session Tracking**: Smooth, per-second countdown timer in the UI, periodically synchronized with the server for authoritative time, ensuring a seamless user experience without sacrificing accuracy.
+- **Secure Session Validation**: On startup, the client validates its stored session with the server, preventing inconsistent states and ensuring the UI always reflects the true login status.
 - Dashboard with time tracking and session info
 - Account balance display and recharge (multi-method: card, bank, MoMo)
 - Services menu: Food & Drinks ordering, Recharge, Chat, Tournaments, Rewards, Reserve PC
@@ -51,6 +53,28 @@ This is the client application for the cybercafe management system, built with E
 3. **Renderer process** listens for the IPC event (`ipcRenderer.on('topup:completed', ...)`), updates its notification state, and displays a popup notification in the UI.
 4. **Notification types and interfaces** are defined in a shared `types/noti.ts` file for type safety and maintainability.
 5. **Note:** The main process must have registered the userId with the server (see Login Flow step 7) to ensure notifications are routed to the correct client.
+
+### Real-time Session & Data Synchronization Flow
+
+The client employs a robust, hybrid approach to manage the user's session time and data in real-time.
+
+1.  **Optimistic UI Counter**:
+    -   The `UserContext` (Zustand store) in the renderer process runs a client-side `setInterval`.
+    -   This timer decrements the `time_remaining` value every second, providing a smooth and responsive countdown on the UI (e.g., in the `Dashboard`).
+    -   UI components are optimized to only re-render the time display, not the entire page, ensuring high performance.
+
+2.  **Authoritative Server Sync**:
+    -   The Electron main process listens for a `session:update` socket event from the server, which is sent every 10 seconds.
+    -   Upon receiving this event, the main process forwards the authoritative `time_remaining` and `balance` to the renderer via an IPC message (`session:data-updated`).
+    -   The `UserContext` listens for this IPC message and resets its local timer with the new, accurate data from the server. This corrects any potential client-side drift.
+
+3.  **Startup Session Validation**:
+    -   When the app starts, if a user session exists in `sessionStorage`, the renderer's `UserContext` sends an IPC message (`auth:validate-stored-session`) to the main process.
+    -   The main process sends a `auth:validate-session` socket event to the server.
+    -   The server checks if the session is still active in its memory and responds.
+    -   If the session is invalid, the main process is notified, and it instructs the renderer (via IPC `auth:force-logout`) to clear the user data, effectively logging the user out.
+
+This architecture ensures a fluid user experience, maintains high performance, and guarantees data consistency and accuracy by always treating the server as the source of truth.
 
 ## Prerequisites
 

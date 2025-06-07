@@ -68,4 +68,43 @@ export function setupAuthSocketHandlers() {
       return { success: false, error: 'Đã xảy ra lỗi khi đăng xuất' };
     }
   });
+}
+
+// Hàm mới để xử lý xác thực session đã lưu
+function setupSessionValidator() {
+  const socket = getSocket();
+  if (!socket) return;
+
+  ipcMain.handle('auth:validate-stored-session', async (event, { userId }) => {
+    if (!socket.connected) {
+      console.warn('[Validator] Socket not connected, cannot validate session.');
+      return { isValid: false }; // Nếu không có kết nối, coi như không hợp lệ
+    }
+
+    return new Promise((resolve) => {
+      // Đặt một timeout để tránh chờ đợi vô hạn
+      const timeout = setTimeout(() => {
+        console.error(`[Validator] Timeout validating session for user ${userId}`);
+        socket.off('auth:validate-session-response');
+        resolve({ isValid: false });
+      }, 5000); // 5 giây timeout
+
+      // Lắng nghe phản hồi từ server
+      socket.once('auth:validate-session-response', (response: { isValid: boolean, customer?: any }) => {
+        clearTimeout(timeout);
+        console.log(`[Validator] Received validation response for user ${userId}:`, response);
+        resolve(response);
+      });
+
+      // Gửi yêu cầu xác thực đến server
+      console.log(`[Validator] Sending validation request for user ${userId}...`);
+      socket.emit('auth:validate-session', { userId });
+    });
+  });
+}
+
+// Gọi cả hai hàm thiết lập
+export function setupAllAuthHandlers() {
+    setupAuthSocketHandlers();
+    setupSessionValidator();
 } 

@@ -1,6 +1,8 @@
 import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import topupService from '../services/topup';
 import { authMiddleware, loggingMiddleware } from './middlewares';
+import { getFullCustomerDetails } from './customers';
+import socketService from '../services/socket';
 
 // Xác thực đầu vào cho yêu cầu nạp tiền
 const validateTopupRequest = (args: any) => {
@@ -25,6 +27,15 @@ const handleProcessTopup = async (event: IpcMainInvokeEvent, args: any) => {
     // Gọi service xử lý nạp tiền
     const result = await topupService.topupByUsername(username, Number(amount), message);
     console.log(`Nạp tiền thành công cho ${username}: ${amount}`);
+    
+    // Sau khi nạp tiền thành công, lấy thông tin chi tiết và thông báo cho các admin
+    if (result.success && result.customer) {
+      const customerDetails = await getFullCustomerDetails(result.customer.id);
+      if (customerDetails) {
+        socketService.emitToAdmins('customer:updated', { customer: customerDetails });
+      }
+    }
+    
     return result;
   } catch (error) {
     console.error('IPC topup error:', error);

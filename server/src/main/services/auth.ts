@@ -3,6 +3,8 @@ import { Customer } from '../models';
 import systemLogService from './systemLog';
 import customerLogService from './customerLog';
 import { Socket } from 'socket.io';
+import socketService from './socket';
+import sessionService from './sessionService';
 
 interface LoginResult {
   success: boolean;
@@ -29,6 +31,7 @@ class AuthService {
    * @returns Kết quả đăng nhập với thông tin khách hàng nếu thành công
    */
   async handleSocketLogin(socket: Socket, credentials: { username: string; password: string }): Promise<LoginResult> {
+    console.log('[handleSocketLogin] Called with credentials:', credentials);
     const { username, password } = credentials;
     const ip_address = socket.handshake.address || 'unknown';
     
@@ -39,70 +42,33 @@ class AuthService {
       const customer = await this.authenticate(username, password, ip_address);
       
       if (customer) {
-        console.log(`Customer ${customer.name} authenticated successfully via socket`);
+        // Sử dụng hàm validateAndActivateCustomer
+        const validation = await this.validateAndActivateCustomer(customer);
+        if (!validation.success) {
+          return {
+            success: false,
+            error: validation.error
+          };
+        }
+
+        // Bắt đầu session
+        await sessionService.startSession(customer, socket);
         
-        // Đăng ký socket với customer ID để dễ dàng emit tới họ sau này
-        socket.join(`customer:${customer.id}`);
-        
-        // Loại bỏ password_hash trước khi gửi về client
-        const { password_hash, ...customerData } = customer;
-        
-        // Ghi log đăng nhập thành công
-        await customerLogService.log(
-          customer.id,
-          'login',
-          {
-            username: customer.name,
-            email: customer.email,
-            ip_address: ip_address,
-            time: new Date().toISOString(),
-            method: 'socket'
-          },
-          ip_address
-        );
-        
-        // Trả về kết quả đăng nhập thành công
+        // Trả về customer đã được cập nhật
         return {
           success: true,
-          customer: customerData
-        };
-      } else {
-        console.log(`Socket authentication failed for: ${username}`);
-        
-        // Ghi log thất bại
-        await systemLogService.log(
-          'security',
-          'Failed authentication attempt via socket',
-          {
-            username,
-            ip_address: ip_address,
-            time: new Date().toISOString()
-          },
-          'warning',
-          ip_address
-        );
-        
-        // Trả về thông báo lỗi
-        return {
-          success: false,
-          error: 'Tên đăng nhập hoặc mật khẩu không đúng'
+          customer
         };
       }
-    } catch (error) {
-      console.error('Socket login error:', error);
-      
-      // Ghi log lỗi
-      await systemLogService.error(
-        'security',
-        'Socket login error',
-        error,
-        ip_address
-      );
-      
-      // Trả về thông báo lỗi
       return {
         success: false,
-        error: 'Lỗi xác thực'
+        error: 'Sai thông tin đăng nhập!'
+      };
+    } catch (err) {
+      console.error('[handleSocketLogin] Lỗi:', err);
+      return {
+        success: false,
+        error: 'Lỗi hệ thống khi đăng nhập!'
       };
     }
   }
@@ -115,24 +81,9 @@ class AuthService {
   async handleSocketLogout(socket: Socket, data: { userId: number }): Promise<void> {
     const { userId } = data;
     const ip_address = socket.handshake.address || 'unknown';
-    
-    console.log(`Socket logout for user ID: ${userId}`);
-    
+
     try {
-      // Thoát khỏi room của customer
-      socket.leave(`customer:${userId}`);
-      
-      // Ghi log đăng xuất
-      await customerLogService.log(
-        userId,
-        'logout',
-        {
-          ip_address: ip_address,
-          time: new Date().toISOString(),
-          method: 'socket'
-        },
-        ip_address
-      );
+      await sessionService.endSession(userId, socket, 'user_logout');
     } catch (error) {
       console.error('Socket logout error:', error);
       
@@ -155,6 +106,8 @@ class AuthService {
    */
   public async authenticate(identifier: string, password: string, ip_address?: string): Promise<Customer | null> {
     try {
+      console.log(`AUTH DEBUG: authenticate called for identifier: ${identifier}`);
+      
       const customerRepo = database.getRepository(Customer);
       
       // Tìm kiếm theo email, phone hoặc name (username)
@@ -166,6 +119,11 @@ class AuthService {
         ]
       });
 
+      console.log(`AUTH DEBUG: authentication result: ${customer ? 'FOUND' : 'NOT FOUND'}`);
+      if (customer) {
+        console.log(`AUTH DEBUG: Customer details - ID: ${customer.id}, Name: ${customer.name}, Time Remaining: ${customer.time_remaining}, Balance: ${customer.balance}`);
+      }
+      
       // Ghi log đăng nhập
       if (customer) {
         await customerLogService.log(
@@ -314,6 +272,67 @@ class AuthService {
         error
       );
     }
+  }
+
+  /**
+   * Kiểm tra điều kiện đăng nhập và cập nhật trạng thái active nếu hợp lệ
+   */
+  public async validateAndActivateCustomer(customer: Customer): Promise<{ success: boolean; error?: string }> {
+    const rate = 10000; // TODO: Replace with config value
+    const hasTimeRemaining = customer.time_remaining && customer.time_remaining > 0;
+    const hasEnoughBalance = customer.balance && customer.balance >= rate;
+    const customerRepo = database.getRepository(Customer);
+    if (!hasTimeRemaining && !hasEnoughBalance) {
+      return {
+        success: false,
+        error: 'Bạn đã hết giờ chơi và số dư không đủ để tự động chuyển đổi. Vui lòng nạp thêm tiền!'
+      };
+    }
+    // Nếu đủ điều kiện, xử lý chuyển đổi tiền sang giờ nếu cần
+    if (!hasTimeRemaining && hasEnoughBalance) {
+      // Chỉ chuyển đổi một lượng tiền vừa đủ cho 1 giờ chơi thay vì toàn bộ số dư
+      const moneyToDeduct = rate;
+      const timeToAddInSeconds = 3600; // 1 giờ
+
+      const originalBalance = customer.balance;
+      const originalTimeRemaining = customer.time_remaining || 0;
+
+      // Cập nhật thông tin local customer object để phản ánh thay đổi
+      customer.balance -= moneyToDeduct;
+      customer.time_remaining = originalTimeRemaining + timeToAddInSeconds;
+      
+      // Lưu thay đổi vào database
+      await customerRepo.update(customer.id, {
+        balance: customer.balance,
+        time_remaining: customer.time_remaining
+      });
+
+      // Chuẩn bị chi tiết để ghi log
+      const logDetails = {
+        amount_converted: moneyToDeduct,
+        time_added_seconds: timeToAddInSeconds,
+        balance_before: originalBalance,
+        balance_after: customer.balance,
+        time_remaining_before: originalTimeRemaining,
+        time_remaining_after: customer.time_remaining
+      };
+
+      // Ghi log hệ thống về sự kiện này
+      await systemLogService.log(
+        'billing',
+        `Auto-converted ${moneyToDeduct} from balance to ${timeToAddInSeconds / 3600}h of time for customer ${customer.name} (ID: ${customer.id})`,
+        { customer_id: customer.id, ...logDetails },
+        'info'
+      );
+
+      // Ghi log cho khách hàng về sự kiện này
+      await customerLogService.log(
+        customer.id,
+        'auto_convert_balance_to_time',
+        logDetails
+      );
+    }
+    return { success: true };
   }
 }
 

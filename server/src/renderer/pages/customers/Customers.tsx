@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Search, 
@@ -31,31 +31,15 @@ import UserTopUpTester from '../../components/UserTopUpTester';
 import TopUpTester from '../../components/TopUpTester';
 import axios from 'axios';
 import io from 'socket.io-client';
-import customerService, { CustomerListItem } from '../../services/customerService';
+import { CustomerDetail } from '../../services/customerService';
 import SystemNotification from '../../components/SystemNotification';
+import { useCustomerStore } from '../../stores/customerStore';
 const { ipcRenderer } = window.require('electron');
 
 // Thêm định nghĩa enum cho trạng thái khách hàng
 type CustomerStatus = 'active' | 'suspended' | 'inactive';
 
-// Xác định lại CustomerDetail type
-interface CustomerDetail {
-  id: string;
-  name: string;
-  email: string;
-  phone?: string;
-  address?: string;
-  dob?: string;
-  status: CustomerStatus;
-  balance: number;
-  points: number;
-  totalSpent: number;
-  hoursPlayed: number;
-  memberSince: string;
-  lastSeen: string;
-  level: number;
-  avatarUrl?: string;
-}
+// CustomerDetail được import từ service, không cần định nghĩa lại ở đây
 
 // Component hiển thị một dòng trong hoạt động gần đây
 const ActivityItem = ({ activity }: { activity: any }) => {
@@ -400,7 +384,7 @@ const CustomerRow = ({
   onClick, 
   isSelected 
 }: { 
-  customer: CustomerListItem, 
+  customer: CustomerDetail, 
   onClick: () => void, 
   isSelected: boolean 
 }) => {
@@ -733,14 +717,14 @@ const ConnectionMonitor = () => {
 };
 
 const Customers = () => {
-  console.log('[Customers.tsx] Customers component rendered với thời gian:', new Date().toLocaleTimeString());
+  console.log('[Customers.tsx] Customers component rendered with Zustand');
+  const { customers, loading: customersLoading, getCustomerById } = useCustomerStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<'all' | 'active' | 'suspended' | 'inactive'>('all');
-  const [selectedCustomer, setSelectedCustomer] = useState<CustomerDetail | null>(null);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [modalAdd, setModalAdd] = useState(false);
   const [modalTopup, setModalTopup] = useState(false);
   const [topupAmount, setTopupAmount] = useState('');
-  const [customers, setCustomers] = useState<CustomerListItem[]>([]);
   const [showTestingTools, setShowTestingTools] = useState(false);
   const [topupLoading, setTopupLoading] = useState(false);
   const [topupError, setTopupError] = useState<string | null>(null);
@@ -765,15 +749,14 @@ const Customers = () => {
   });
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
-  const [activeCustomers, setActiveCustomers] = useState<number>(0);
-  const [forceUpdateTrigger, setForceUpdateTrigger] = useState<number>(0);
-  
-  // Force re-render function
-  const forceUpdate = useCallback(() => {
-    setForceUpdateTrigger(prev => prev + 1);
-    console.log('[Customers.tsx] Force update triggered');
-  }, []);
 
+  const selectedCustomer = useMemo(() => {
+    if (!selectedCustomerId) return null;
+    return getCustomerById(selectedCustomerId) || null;
+  }, [selectedCustomerId, getCustomerById, customers]);
+
+  const activeCustomers = useMemo(() => customers.filter(c => c.status === 'active').length, [customers]);
+  
   // Các gói nạp tiền có sẵn
   const predefinedPackages = [
     { amount: 10000, label: '10.000đ' },
@@ -788,55 +771,34 @@ const Customers = () => {
     setTopupAmount(amount.toString());
   };
 
-  // Lấy danh sách khách hàng thật khi vào trang
-  useEffect(() => {
-    console.log('[Customers.tsx] Bắt đầu lấy danh sách khách hàng');
-    customerService.getCustomers().then(data => {
-      console.log('[Customers.tsx] Nhận được danh sách khách hàng:', data.length);
-      setCustomers(data);
-    });
-  }, []);
-  
-  // Theo dõi thay đổi danh sách khách hàng
-  useEffect(() => {
-    console.log('[Customers.tsx] Danh sách khách hàng thay đổi:', customers.length);
-    // Cập nhật số khách hàng đang active
-    const active = customers.filter(c => c.status === 'active').length;
-    setActiveCustomers(active);
-    
-    // Debug: In ra danh sách trạng thái khách hàng
-    console.log('[Customers.tsx] Trạng thái của tất cả khách hàng:',
-      customers.map(c => ({ id: c.id, name: c.name, status: c.status }))
-    );
-  }, [customers]);
-
   // Lọc danh sách
   const filteredCustomers = React.useMemo(() => {
-    console.log('[Customers.tsx] Filtering customers with forceUpdateTrigger:', forceUpdateTrigger);
-    return customers.filter((customer: CustomerListItem) => {
+    return customers.filter((customer: CustomerDetail) => {
       const matchesSearch = customer.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
         customer.email.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus = selectedStatus === 'all' || customer.status === selectedStatus;
       return matchesSearch && matchesStatus;
     });
-  }, [customers, searchQuery, selectedStatus, forceUpdateTrigger]);
+  }, [customers, searchQuery, selectedStatus]);
 
-  // Khi click vào 1 khách hàng, lấy detail
-  const handleSelectCustomer = async (customer: CustomerListItem) => {
-    const detail = await customerService.getCustomerDetail(customer.id);
-    setSelectedCustomer(detail);
-    
-    if (detail) {
+  // When a customer from the list is clicked, get full details
+  const handleSelectCustomer = (customer: CustomerDetail) => {
+    setSelectedCustomerId(customer.id);
+  };
+
+  // Update edit form when selected customer changes
+  useEffect(() => {
+    if (selectedCustomer) {
       setEditCustomerForm({
-        name: detail.name,
-        email: detail.email,
-        phone: detail.phone || '',
-        address: detail.address || '',
-        dob: detail.dob || '',
-        status: detail.status as CustomerStatus
+        name: selectedCustomer.name,
+        email: selectedCustomer.email,
+        phone: selectedCustomer.phone || '',
+        address: selectedCustomer.address || '',
+        dob: selectedCustomer.dob || '',
+        status: selectedCustomer.status as CustomerStatus
       });
     }
-  };
+  }, [selectedCustomer]);
 
   const handleTopup = async () => {
     if (!selectedCustomer) return;
@@ -848,9 +810,6 @@ const Customers = () => {
     setTopupResult(null);
     
     try {
-      console.log(`Đang gửi nạp tiền cho username: ${selectedCustomer.name}`);
-      
-      // Sử dụng IPC thay vì gọi API HTTP
       const result = await ipcRenderer.invoke('process-topup', {
         username: selectedCustomer.name,
         amount: amount,
@@ -858,26 +817,8 @@ const Customers = () => {
       });
       
       if (result && result.success) {
-        console.log('Nạp tiền thành công:', result);
-        
-        // Cập nhật local state
-        const updatedCustomers = customers.map((c: CustomerListItem) => {
-          if (c.id === selectedCustomer.id) {
-            const balance = (c.balance || 0) + amount;
-            return { ...c, balance };
-          }
-          return c;
-        });
-        
-        setCustomers(updatedCustomers);
-        setSelectedCustomer(prev => prev ? { 
-          ...prev, 
-          balance: (prev.balance || 0) + amount, 
-          totalSpent: prev.totalSpent + amount 
-        } : null);
-        
+        // UI tự động cập nhật nhờ Zustand và socket event
         setTopupResult(result);
-        // Đợi 1.5 giây để cho người dùng thấy kết quả thành công
         setTimeout(() => {
           setModalTopup(false);
           setTopupAmount('');
@@ -937,32 +878,7 @@ const Customers = () => {
       );
       
       if (result && result.success) {
-        // Cập nhật thông tin khách hàng trong state
-        if (result.customer && selectedCustomer) {
-          setSelectedCustomer({
-            ...selectedCustomer,
-            name: result.customer.name,
-            email: result.customer.email,
-            phone: result.customer.phone,
-            address: result.customer.address,
-            dob: result.customer.dob,
-            status: result.customer.status as CustomerStatus
-          });
-        }
-        
-        // Cập nhật danh sách khách hàng
-        setCustomers(prev => prev.map(c => {
-          if (c.id === selectedCustomer.id) {
-            return { 
-              ...c, 
-              name: editCustomerForm.name, 
-              email: editCustomerForm.email,
-              status: editCustomerForm.status
-            };
-          }
-          return c;
-        }));
-        
+        // Không cần cập nhật state cục bộ. Store sẽ xử lý.
         setModalEdit(false);
         setNotification({ type: 'success', message: 'Đã cập nhật thông tin khách hàng' });
       } else {
@@ -984,9 +900,8 @@ const Customers = () => {
       const result = await ipcRenderer.invoke('customers:delete', selectedCustomer.id);
       
       if (result && result.success) {
-        // Cập nhật danh sách khách hàng
-        setCustomers(prev => prev.filter(c => c.id !== selectedCustomer.id));
-        setSelectedCustomer(null);
+        // Store sẽ xử lý việc xóa. UI sẽ tự cập nhật.
+        setSelectedCustomerId(null);
         setModalDelete(false);
         setNotification({ type: 'success', message: 'Đã xóa khách hàng' });
       } else {
@@ -1000,226 +915,34 @@ const Customers = () => {
     }
   };
 
-  // Đặt các event listener một lần khi component mount
+  // Event listeners for notifications
   useEffect(() => {
     if (window.require) {
       const { ipcRenderer } = window.require('electron');
       
-      console.log('[Customers.tsx] Setting up event listeners');
-      
-      // DEBUG: Lắng nghe tất cả các sự kiện IPC
-      const debugAllEvents = (_event: any, ...args: any[]) => {
-        console.log(`[IPC DEBUG] Event received: ${_event.channel}`, args);
-      };
-      ipcRenderer.on('*', debugAllEvents);
-      
-      // Xử lý sự kiện customer:status-changed
-      const handler = (_event: any, data: { customer_id: string | number; status: string }) => {
-        const { customer_id, status } = data;
-        const statusTyped = status as CustomerStatus;
-        console.log('[Customers.tsx] Nhận IPC customer:status-changed:', data);
-        
-        // Truy cập customers bên trong callback để không phụ thuộc vào dependency
-        setCustomers(prev => {
-          // Log ra để debug
-          console.log('[customer:status-changed] Trước khi cập nhật:', 
-            prev.filter(c => c.id.toString() === customer_id.toString()).map(c => ({id: c.id, status: c.status}))
-          );
-          
-          // Cập nhật danh sách khách hàng
-          console.log('[Customers.tsx] Đang cập nhật trạng thái customer:status-changed', customer_id, status);
-          
-          const updatedCustomers = prev.map(c => 
-            c.id.toString() === customer_id.toString() ? { ...c, status: statusTyped } : c
-          );
-          
-          // Log ra để debug
-          console.log('[customer:status-changed] Sau khi cập nhật:', 
-            updatedCustomers.filter(c => c.id.toString() === customer_id.toString()).map(c => ({id: c.id, status: c.status}))
-          );
-          
-          return updatedCustomers;
-        });
-        
-        // Cập nhật selected customer nếu đang xem
-        setSelectedCustomer(prev => {
-          if (prev && prev.id.toString() === customer_id.toString()) {
-            console.log('[customer:status-changed] Cập nhật selectedCustomer:', prev.id, 'to status:', statusTyped);
-            return { ...prev, status: statusTyped };
-          }
-          return prev;
-        });
-        
-        console.log('[Customers.tsx] Updated state after customer:status-changed');
-        
-        // Nếu đây là event inactive/logout, đảm bảo UI được cập nhật
-        if (status === 'inactive') {
-          setTimeout(() => {
-            forceUpdate();
-            console.log('[Customers.tsx] Force update after status-changed to inactive');
-          }, 100);
-        }
-      };
-      
-      // =================== XỬ LÝ LOGIN ===================
-      const loginHandler = (_event: any, data: { customerId: number; customerName: string; time: string }) => {
-        console.log('[Customers.tsx] Nhận IPC admin:login-notification:', data);
-        
-        // Cập nhật trạng thái khách hàng thành active khi đăng nhập
-        const { customerId } = data;
-        console.log(`[Customers.tsx] Đang cập nhật trạng thái cho customerId=${customerId} (kiểu: ${typeof customerId})`);
-        
-        // Trực tiếp cập nhật trạng thái customer trong state
-        setCustomers(prevCustomers => {
-          console.log('[Customers.tsx] Danh sách khách hàng hiện tại trong login handler:', prevCustomers.length);
-          
-          // Log ra để debug
-          console.log('[admin:login] Trước khi cập nhật:', 
-            prevCustomers.filter(c => c.id.toString() === customerId.toString()).map(c => ({id: c.id, status: c.status}))
-          );
-          
-          const updatedCustomers = prevCustomers.map(c => {
-            console.log(`So sánh: ${c.id} (${typeof c.id}) vs ${customerId} (${typeof customerId})`);
-            return c.id.toString() === customerId.toString() 
-              ? { ...c, status: 'active' as CustomerStatus } 
-              : c;
-          });
-          
-          // Log lại thông tin sau khi cập nhật
-          console.log('[admin:login] Sau khi cập nhật:', 
-            updatedCustomers.filter(c => c.id.toString() === customerId.toString()).map(c => ({id: c.id, status: c.status}))
-          );
-          
-          console.log('[Customers.tsx] Danh sách sau khi cập nhật login:', updatedCustomers.length);
-          return updatedCustomers;
-        });
-        
-        // Cập nhật selectedCustomer nếu đang xem chi tiết khách hàng này
-        setSelectedCustomer(prev => {
-          if (prev && prev.id.toString() === customerId.toString()) {
-            console.log('[admin:login] Cập nhật selected customer trong login:', prev.id);
-            return { ...prev, status: 'active' };
-          }
-          return prev;
-        });
-        
-        // Hiển thị thông báo
+      const loginHandler = (_event: any, data: { customerName: string; time: string }) => {
         setNotification({ 
           type: 'success', 
           message: `Khách hàng ${data.customerName} vừa đăng nhập lúc ${new Date(data.time).toLocaleTimeString()}` 
         });
-        
-        console.log('[Customers.tsx] Login handler completed');
       };
       
-      // =================== XỬ LÝ LOGOUT ===================
-      // PHẢI XỬ LÝ GIỐNG HỆT LOGIN
-      const logoutHandler = (_event: any, data: any) => { // Thay type cụ thể bằng any để cho phép cả hai định dạng
-        console.log('[LOGOUT DEBUG] [Customers.tsx] Nhận IPC admin:logout-notification:', data);
-        
-        // Đảm bảo chúng ta có customerId, xử lý cả hai format có thể có
-        let customerId = data.customerId || data.customer_id;
-        
-        // Đảm bảo customerId là số
-        customerId = Number(customerId);
-        
-        if (!customerId || isNaN(customerId)) {
-          console.error('[LOGOUT DEBUG] [Customers.tsx] Không tìm thấy ID hợp lệ trong dữ liệu:', data);
-          return;
-        }
-        
-        console.log(`[LOGOUT DEBUG] [Customers.tsx] Đang cập nhật trạng thái cho customerId=${customerId} (kiểu: ${typeof customerId}) khi logout`);
-        
-        // Debug: in ra số lượng customers trước khi update
-        console.log(`[LOGOUT DEBUG] [Customers.tsx] Tổng số customers trước update: ${customers.length}`);
-        console.log(`[LOGOUT DEBUG] [Customers.tsx] Danh sách customer IDs:`, customers.map(c => ({id: c.id, idType: typeof c.id, status: c.status})));
-        
-        // FORCE RE-RENDER bằng cách rõ ràng là cập nhật trạng thái thành inactive
-        setCustomers(prevCustomers => {
-          console.log('[LOGOUT DEBUG] [Customers.tsx] Số lượng customers trước khi logout handler:', prevCustomers.length);
-          
-          // Log ra để debug
-          console.log('[LOGOUT DEBUG] [Customers.tsx] Trước khi cập nhật:', 
-            prevCustomers.filter(c => c.id.toString() === customerId.toString()).map(c => ({id: c.id, status: c.status}))
-          );
-          
-          // Cập nhật trạng thái - RẤT GIỐNG LOGIN nhưng đổi thành inactive
-          const updatedCustomers = prevCustomers.map(c => {
-            const shouldUpdate = c.id.toString() === customerId.toString();
-            console.log(`[LOGOUT DEBUG] [Customers.tsx] So sánh: ${c.id} (${typeof c.id}) vs ${customerId} (${typeof customerId}) - Update: ${shouldUpdate}`);
-            return shouldUpdate ? { ...c, status: 'inactive' as CustomerStatus } : c;
-          });
-          
-          // Log lại thông tin sau khi cập nhật
-          console.log('[LOGOUT DEBUG] [Customers.tsx] Sau khi cập nhật:', 
-            updatedCustomers.filter(c => c.id.toString() === customerId.toString()).map(c => ({id: c.id, status: c.status}))
-          );
-          
-          console.log('[LOGOUT DEBUG] [Customers.tsx] Số lượng customers sau khi logout handler:', updatedCustomers.length);
-          return updatedCustomers;
-        });
-        
-        // Cập nhật selectedCustomer nếu đang xem chi tiết khách hàng này - GIỐNG LOGIN
-        setSelectedCustomer(prev => {
-          if (prev && prev.id.toString() === customerId.toString()) {
-            console.log('[LOGOUT DEBUG] [Customers.tsx] Cập nhật selected customer trong logout:', prev.id);
-            return { ...prev, status: 'inactive' };
-          }
-          return prev;
-        });
-        
-        // Hiển thị thông báo - GIỐNG LOGIN nhưng đổi type thành info
-        const customerName = data.customerName || 'Unknown';
-        const timeStr = data.time ? new Date(data.time).toLocaleTimeString() : new Date().toLocaleTimeString();
-        
+      const logoutHandler = (_event: any, data: { customerName: string; time: string }) => {
         setNotification({ 
           type: 'info', 
-          message: `Khách hàng ${customerName} vừa đăng xuất lúc ${timeStr}` 
+          message: `Khách hàng ${data.customerName || 'Unknown'} vừa đăng xuất lúc ${new Date(data.time).toLocaleTimeString()}` 
         });
-        
-        console.log('[LOGOUT DEBUG] [Customers.tsx] Logout handler completed');
-        
-        // Force re-render để đảm bảo UI cập nhật
-        setTimeout(() => {
-          forceUpdate();
-          console.log('[LOGOUT DEBUG] [Customers.tsx] Force update after logout');
-        }, 100);
       };
       
-      // Đăng ký các event listener
-      ipcRenderer.on('customer:status-changed', handler);
       ipcRenderer.on('admin:login-notification', loginHandler);
       ipcRenderer.on('admin:logout-notification', logoutHandler);
       
-      // Đăng ký tất cả các events liên quan đến status một cách rõ ràng để kiểm tra được logs
-      ipcRenderer.on('customer:status-changed', (event: any, data: any) => {
-        console.log('LOGOUT DEBUG [Customers.tsx] Received customer:status-changed event:', data);
-      });
-      
-      ipcRenderer.on('admin:login-notification', (event: any, data: any) => {
-        console.log('LOGOUT DEBUG [Customers.tsx] Received admin:login-notification event:', data);
-      });
-      
-      ipcRenderer.on('admin:logout-notification', (event: any, data: any) => {
-        console.log('LOGOUT DEBUG [Customers.tsx] Received admin:logout-notification event:', data);
-      });
-      
-      // Thêm test event handler
-      ipcRenderer.on('test:debug-event', (event: any, data: any) => {
-        console.log('LOGOUT DEBUG [Customers.tsx] Received test:debug-event:', data);
-      });
-      
-      // Cleanup khi component unmount
       return () => {
-        console.log('[Customers.tsx] Removing event listeners');
-        ipcRenderer.removeListener('customer:status-changed', handler);
         ipcRenderer.removeListener('admin:login-notification', loginHandler);
         ipcRenderer.removeListener('admin:logout-notification', logoutHandler);
-        ipcRenderer.removeListener('test:debug-event', () => {});
-        ipcRenderer.removeListener('*', debugAllEvents);
       };
     }
-  }, []); // Chỉ chạy một lần khi component mount
+  }, []);
 
   // Thêm hàm debug để kiểm tra trạng thái
   const debugCustomerStatus = () => {
@@ -1229,7 +952,8 @@ const Customers = () => {
     console.log('[DEBUG] Khách hàng không hoạt động:', customers.filter(c => c.status === 'inactive').length);
     console.log('[DEBUG] Danh sách khách hàng đang hoạt động:', 
       customers.filter(c => c.status === 'active').map(c => ({ id: c.id, name: c.name })));
-    console.log('[DEBUG] Selected customer:', selectedCustomer);
+    console.log('[DEBUG] Selected customer ID:', selectedCustomerId);
+    console.log('[DEBUG] Selected customer data from store:', selectedCustomer);
     console.log('[DEBUG] ================================');
 
     // Hiển thị thông báo trạng thái cho người dùng
@@ -1241,18 +965,10 @@ const Customers = () => {
     // Test emit logout event trực tiếp
     try {
       const { ipcRenderer } = window.require('electron');
-                    ipcRenderer.send('test:trigger-logout', { customerId: 1 });
-              console.log('Đã gọi test:trigger-logout cho customerId: 1');
-              setNotification({
-                type: 'info',
-                message: 'Đã gọi test:trigger-logout cho customerId: 1'
-              });
-            } catch (err) {
-              console.error('Error triggering test logout:', err);
-              setNotification({
-                type: 'error',
-                message: 'Lỗi khi gọi test logout'
-              });
+      ipcRenderer.send('test:trigger-logout', { customerId: 1 });
+      console.log('Đã gọi test:trigger-logout cho customerId: 1');
+    } catch (err) {
+      console.error('Error triggering test logout:', err);
     }
   };
 
@@ -1276,12 +992,6 @@ const Customers = () => {
       };
     }
   }, []);
-
-  // Tính toán số khách hàng đang active khi customers thay đổi
-  useEffect(() => {
-    const active = customers.filter(c => c.status === 'active').length;
-    setActiveCustomers(active);
-  }, [customers]);
 
   return (
     <div className="p-6 space-y-6">
@@ -1351,7 +1061,7 @@ const Customers = () => {
               <div>
                 <p className="text-sm font-medium text-gray-600">Đang hoạt động</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {customers.filter((c: CustomerListItem) => c.status === 'active').length}
+                  {customers.filter((c: CustomerDetail) => c.status === 'active').length}
                 </p>
               </div>
               <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
@@ -1448,12 +1158,12 @@ const Customers = () => {
                       Không tìm thấy khách hàng
                     </div>
                   ) : (
-                    filteredCustomers.map((customer: CustomerListItem) => (
+                    filteredCustomers.map((customer: CustomerDetail) => (
                       <CustomerRow 
                         key={customer.id} 
                         customer={customer} 
                         onClick={() => handleSelectCustomer(customer)}
-                        isSelected={selectedCustomer?.id === customer.id}
+                        isSelected={selectedCustomerId === customer.id}
                       />
                     ))
                   )}
@@ -1558,14 +1268,19 @@ const Customers = () => {
             const password = formData.get('password') as string;
             if (!username || !password) return;
             try {
-              const newCustomer = await customerService.createCustomer(username, password);
-              if (newCustomer) {
-                const updatedList = await customerService.getCustomers();
-                setCustomers(updatedList);
+              // customerService.createCustomer giờ đã trả về full detail
+              // và ipc handler cũng đã emit event với full detail
+              // nên không cần làm gì thêm ở đây.
+              const result = await ipcRenderer.invoke('customers:create', {
+                name: username,
+                password_hash: password
+              });
+
+              if (result && result.success) {
                 setModalAdd(false);
                 setNotification({ type: 'success', message: `Đã tạo khách hàng mới: ${username}` });
               } else {
-                setNotification({ type: 'error', message: 'Lỗi: Không thể tạo khách hàng mới' });
+                setNotification({ type: 'error', message: result.error || 'Lỗi: Không thể tạo khách hàng mới' });
               }
             } catch (error) {
               console.error('Error creating customer:', error);
@@ -1890,7 +1605,8 @@ const Customers = () => {
             console.log('[DEBUG] Khách hàng không hoạt động:', customers.filter(c => c.status === 'inactive').length);
             console.log('[DEBUG] Danh sách khách hàng đang hoạt động:', 
               customers.filter(c => c.status === 'active').map(c => ({ id: c.id, name: c.name })));
-            console.log('[DEBUG] Selected customer:', selectedCustomer);
+            console.log('[DEBUG] Selected customer ID:', selectedCustomerId);
+            console.log('[DEBUG] Selected customer from store:', selectedCustomer);
             console.log('[DEBUG] ================================');
         
             // Hiển thị thông báo trạng thái cho người dùng

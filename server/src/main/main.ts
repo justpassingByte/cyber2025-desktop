@@ -13,6 +13,7 @@ import setupManager from './setup';
 // Thay thế service logging cũ với system log và customer log mới
 import systemLogService from './services/systemLog';
 import customerLogService from './services/customerLog';
+import sessionManagerService from './services/sessionManagerService';
 
 // Import các handler IPC
 import { registerCustomerHandlers } from './ipcHandlers/customers';
@@ -60,62 +61,23 @@ function setupSocketServer() {
     // Lắng nghe sự kiện đăng nhập
     socket.on('auth:login', async (credentials, callback) => {
       try {
-        console.log(`Login attempt for: ${credentials.username}`);
-        const ip_address = socket.handshake.address || 'unknown';
-        const customer = await authService.authenticate(credentials.username, credentials.password, ip_address);
+        const result = await authService.handleSocketLogin(socket, credentials);
         
-        if (customer) {
-          console.log(`Customer ${customer.name} authenticated successfully`);
-          
-          // Đăng ký socket với customer ID để dễ dàng emit tới họ sau này
-          socket.join(`customer:${customer.id}`);
-          
+        if (result.success) {
           // Loại bỏ password_hash trước khi gửi về client
-          const { password_hash, ...customerData } = customer;
+          const { password_hash, ...customerData } = result.customer;
           
           // Gửi kết quả đăng nhập thành công
           callback({
             success: true,
             customer: customerData
           });
-          
-          // Ghi log đăng nhập khách hàng
-          await customerLogService.log(
-            customer.id,
-            'login',
-            {
-              username: credentials.username,
-              ip_address: ip_address,
-              time: new Date().toISOString()
-            },
-            ip_address
-          );
-          
-          // Thông báo admin về đăng nhập của khách hàng
-          socketService.emitToAdmins('admin:login-notification', {
-            customerId: customer.id,
-            customerName: customer.name,
-            time: new Date().toISOString()
-          });
         } else {
-          console.log(`Authentication failed for: ${credentials.username}`);
+          console.log(`Authentication failed for: ${credentials.username}. Reason: ${result.error}`);
           callback({
             success: false,
-            error: 'Username hoặc mật khẩu không đúng'
+            error: result.error
           });
-          
-          // Ghi log thất bại
-          await systemLogService.log(
-            'security',
-            'Failed authentication attempt',
-            {
-              username: credentials.username,
-              ip_address: ip_address,
-              time: new Date().toISOString()
-            },
-            'warning',
-            ip_address
-          );
         }
       } catch (error) {
         console.error('Socket login error:', error);
@@ -194,6 +156,9 @@ async function initServices() {
     // Connect to MySQL database
     await database.connect();
     
+    // Phục hồi các session đang hoạt động từ DB (quan trọng)
+    await sessionManagerService.resumeActiveSessions();
+
     // Create default customers if needed
     await authService.createDefaultCustomers();
     
@@ -203,8 +168,12 @@ async function initServices() {
     registerLogHandlers();
     registerTransactionHandlers();
     registerAuthHandlers();
+    console.log('### AUTH HANDLERS REGISTERED SUCCESSFULLY ###');
     registerSocketHandlers();
     
+    // Start the session manager
+    sessionManagerService.start();
+
     // Log application startup
     await systemLogService.log(
       'app',
@@ -334,6 +303,9 @@ app.on('quit', async () => {
       time: new Date().toISOString()
     });
     
+    // Stop the session manager
+    sessionManagerService.stop();
+
     // Stop MySQL
     await xamppService.stopMySql();
     

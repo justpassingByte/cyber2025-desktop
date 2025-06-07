@@ -11,7 +11,7 @@ export class Session {
   @ManyToOne(() => Computer, (computer: Computer) => computer.sessions)
   computer: Computer;
 
-  @Column()
+  @Column({ nullable: true })
   computer_id: number;
 
   @ManyToOne(() => Customer, (customer: Customer) => customer.sessions)

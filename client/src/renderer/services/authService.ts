@@ -3,6 +3,7 @@ export interface UserData {
   username: string;
   email: string;
   balance: number;
+  time_remaining?: number;
   points: number;
   status: string;
   createdAt: string;
@@ -28,7 +29,10 @@ class AuthService {
    */
   async login(credentials: LoginCredentials): Promise<LoginResponse> {
     if (!ipcRenderer) throw new Error('ipcRenderer not available');
-    return ipcRenderer.invoke('auth:login', credentials);
+    console.log('CLIENT: Calling auth:login with credentials', credentials);
+    const response = await ipcRenderer.invoke('auth:login', credentials);
+    console.log('CLIENT: Received auth:login response', response);
+    return response;
   }
 
   /**

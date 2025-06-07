@@ -1,6 +1,7 @@
 import { Server as HttpServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import { BrowserWindow } from 'electron';
+import sessionManagerService from './sessionManagerService';
 
 interface UserConnection {
   socketId: string;
@@ -108,8 +109,25 @@ class WebSocketService {
 
       // Handle customer linking
       socket.on('customer:link', (customerId: number) => {
-        this.customerSockets.set(customerId, socket.id);
-        console.log(`Customer ${customerId} linked to socket ${socket.id}`);
+        this.linkCustomerToSocket(customerId, socket.id);
+      });
+
+      // Handler mới để xác thực session
+      socket.on('auth:validate-session', async ({ userId }) => {
+        console.log(`[Socket] Received session validation request for user: ${userId}`);
+        // Kiểm tra xem user này có đang được theo dõi bởi SessionManager không
+        const customerSession = sessionManagerService.getActiveSession(userId);
+
+        if (customerSession) {
+          // Nếu có, trả về thông tin mới nhất
+          socket.emit('auth:validate-session-response', { 
+            isValid: true,
+            customer: customerSession.customer 
+          });
+        } else {
+          // Nếu không, trả về không hợp lệ
+          socket.emit('auth:validate-session-response', { isValid: false });
+        }
       });
     });
   }
@@ -304,6 +322,18 @@ class WebSocketService {
   // Check if socket server is connected
   isConnected(): boolean {
     return this.io !== null && !!this.io.engine?.clientsCount;
+  }
+
+  public linkCustomerToSocket(customerId: number, socketId: string): void {
+    this.customerSockets.set(customerId, socketId);
+    console.log(`Customer ${customerId} linked to socket ${socketId}`);
+  }
+
+  public unlinkCustomerSocket(customerId: number): void {
+    if (this.customerSockets.has(customerId)) {
+      this.customerSockets.delete(customerId);
+      console.log(`Customer ${customerId} link removed.`);
+    }
   }
 }
 

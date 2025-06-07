@@ -75,7 +75,7 @@ export function Layout({ children }: LayoutProps) {
       setUsername(user.username);
       setBalance(user.balance);
       setRank(user.rank);
-      setTimeRemaining(formatTime(user.timeRemaining));
+      setTimeRemaining(formatTime(user.time_remaining));
     } else {
       // Redirect to login if no user found
       navigate('/');
@@ -121,8 +121,8 @@ export function Layout({ children }: LayoutProps) {
       }
     } else {
       console.log('LOGOUT DEBUG: No user ID available for logout');
-      clearUser();
-      navigate('/');
+    clearUser();
+    navigate('/');
     }
   };
 

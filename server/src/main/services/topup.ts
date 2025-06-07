@@ -4,6 +4,7 @@ import customerLogService from './customerLog';
 import systemLogService from './systemLog';
 import socketService from './socket';
 import { BrowserWindow } from 'electron';
+import sessionManagerService from './sessionManagerService';
 
 class TopupService {
   /**
@@ -78,7 +79,10 @@ class TopupService {
       // Commit transaction
       await queryRunner.commitTransaction();
       
-      // Bước 6: Ghi log và gửi thông báo (thực hiện sau khi commit)
+      // Bước 6: Đồng bộ Session Manager, ghi log và gửi thông báo
+      // Cập nhật trạng thái trong bộ nhớ của Session Manager NẾU khách hàng đang online
+      sessionManagerService.updateSessionBalance(customer.id, updatedCustomer.balance);
+
       await this.logTransaction(
         customer.id,
         amount,
@@ -98,7 +102,8 @@ class TopupService {
           username,
           amount,
           createdAt: transaction.created_at
-        }
+        },
+        customer: updatedCustomer
       };
       
     } catch (error) {
