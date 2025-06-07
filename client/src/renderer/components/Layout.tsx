@@ -82,9 +82,48 @@ export function Layout({ children }: LayoutProps) {
     }
   }, [user, navigate]);
 
-  const handleLogout = () => {
-    clearUser();
-    navigate('/');
+  const handleLogout = async () => {
+    if (user && user.id) {
+      try {
+        // Log chi tiết trước khi gọi API logout
+        console.log('LOGOUT DEBUG: Preparing to logout user:', {
+          id: user.id,
+          idType: typeof user.id,
+          username: user.username
+        });
+        
+        // Gọi API logout - thử gọi trực tiếp với ID
+        const { ipcRenderer } = window.require('electron');
+        
+        // Đảm bảo ID người dùng được chuyển thành số
+        const numericUserId = Number(user.id);
+        console.log('LOGOUT DEBUG: Calling auth:logout with direct ID:', numericUserId);
+        
+        // Gọi trực tiếp với ID thay vì object để tránh mâu thuẫn định dạng
+        const result = await ipcRenderer.invoke('auth:logout', numericUserId);
+        
+        console.log('LOGOUT DEBUG: Logout API response:', result);
+        
+        if (result && result.success) {
+          // Chỉ khi logout thành công mới xóa user và chuyển hướng
+          console.log('LOGOUT DEBUG: Logout successful, clearing user state');
+          clearUser();
+          navigate('/');
+        } else {
+          console.error('LOGOUT DEBUG: Server returned error:', result?.error || 'Unknown error');
+          alert('Đăng xuất không thành công: ' + (result?.error || 'Lỗi không xác định'));
+          // Thử gọi test event để debug
+          await ipcRenderer.send('test:trigger-logout', { customerId: user.id });
+        }
+      } catch (error) {
+        console.error('LOGOUT DEBUG: Error calling logout API:', error);
+        alert('Lỗi khi đăng xuất: ' + error);
+      }
+    } else {
+      console.log('LOGOUT DEBUG: No user ID available for logout');
+      clearUser();
+      navigate('/');
+    }
   };
 
   return (

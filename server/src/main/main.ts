@@ -22,6 +22,9 @@ import { registerTransactionHandlers } from './ipcHandlers/transactions';
 import { registerAuthHandlers } from './ipcHandlers/auth';
 import { registerSocketHandlers } from './ipcHandlers/socket';
 
+// Import auto login script
+import './adminAutoLogin';
+
 // Better environment detection
 const isDev = process.env.NODE_ENV === 'development' || process.env.DEBUG_PROD === 'true';
 console.log('Running in development mode?', isDev);
@@ -128,6 +131,46 @@ function setupSocketServer() {
           error,
           socket.handshake.address
         );
+      }
+    });
+    
+    // Lắng nghe sự kiện đăng xuất
+    socket.on('auth:logout', async (data, callback) => {
+      console.log('LOGOUT DEBUG [SERVER]: Received auth:logout event with data:', data);
+      
+      try {
+        // Parse userId from different formats
+        const userId = typeof data === 'object' && data !== null && 'userId' in data 
+          ? Number(data.userId) 
+          : typeof data === 'number' || typeof data === 'string' 
+            ? Number(data) 
+            : null;
+            
+        if (userId === null) {
+          console.error('LOGOUT DEBUG [SERVER]: Invalid userId format in auth:logout:', data);
+          if (typeof callback === 'function') {
+            callback({ success: false, error: 'Invalid user ID format' });
+          }
+          return;
+        }
+        
+        console.log(`LOGOUT DEBUG [SERVER]: Processing logout for userId: ${userId}`);
+        
+        // Call auth service to handle the logout logic
+        await authService.handleSocketLogout(socket, { userId });
+        
+        console.log(`LOGOUT DEBUG [SERVER]: Logout processed successfully for user ${userId}`);
+        
+        // Send success response
+        if (typeof callback === 'function') {
+          console.log('LOGOUT DEBUG [SERVER]: Sending success callback');
+          callback({ success: true });
+        }
+      } catch (error) {
+        console.error('LOGOUT DEBUG [SERVER]: Error in auth:logout handler:', error);
+        if (typeof callback === 'function') {
+          callback({ success: false, error: 'Server error during logout' });
+        }
       }
     });
   });

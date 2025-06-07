@@ -213,12 +213,35 @@ class WebSocketService {
   // Gửi thông báo đến tất cả admin
   public emitToAdmins(event: string, data: any): void {
     if (!this.io || !this.connected) {
-      console.error('Socket.IO not initialized');
+      console.error('LOGOUT DEBUG [SocketService]: Cannot emit to admins - Socket.IO not initialized');
       return;
     }
 
+    console.log(`LOGOUT DEBUG [SocketService]: Emitting event '${event}' with data:`, JSON.stringify(data));
+    
+    // Test emitting a modified version of this event directly to renderer
+    if (event === 'admin:logout-notification') {
+      console.log('LOGOUT DEBUG [SocketService]: Also emitting test debug event');
+      try {
+        const testData = { ...data, isTestEvent: true };
+        this.notifyRenderer('test:debug-event', testData);
+        // Emit the original event directly via IPC too
+        this.notifyRenderer(event, data);
+      } catch (err) {
+        console.error('LOGOUT DEBUG [SocketService]: Error emitting test event:', err);
+      }
+    }
+    
+    // Kiểm tra số lượng client trong room 'admins'
+    const clients = this.io.sockets.adapter.rooms.get('admins');
+    console.log(`LOGOUT DEBUG [SocketService]: Number of clients in 'admins' room: ${clients ? clients.size : 0}`);
+    
     this.io.to('admins').emit(event, data);
-    console.log(`Emitted ${event} to all admins`);
+    console.log(`LOGOUT DEBUG [SocketService]: Emitted ${event} to all admins`);
+    
+    // Forward event tới renderer process qua IPC
+    console.log(`LOGOUT DEBUG [SocketService]: Forwarding event to renderer via notifyRenderer`);
+    this.notifyRenderer(event, data);
   }
 
   // Gửi thông báo đến tất cả clients
@@ -253,17 +276,28 @@ class WebSocketService {
     return [...this.userConnections];
   }
 
-  // Method to notify renderer process through BrowserWindow
-  private notifyRenderer(channel: string, data: any) {
+  // Gửi thông báo cho renderer process
+  private notifyRenderer(channel: string, data: any): void {
     try {
       const windows = BrowserWindow.getAllWindows();
-      windows.forEach(window => {
+      console.log(`LOGOUT DEBUG [SocketService]: Sending IPC '${channel}' to ${windows.length} renderer window(s) with data:`, JSON.stringify(data));
+      
+      if (windows.length === 0) {
+        console.log(`LOGOUT DEBUG [SocketService]: No renderer windows found!`);
+        return;
+      }
+      
+      windows.forEach((window, idx) => {
         if (!window.isDestroyed()) {
+          console.log(`LOGOUT DEBUG [SocketService]: Sending to window #${idx}, URL: ${window.webContents.getURL()}`);
           window.webContents.send(channel, data);
+          console.log(`LOGOUT DEBUG [SocketService]: Sent IPC '${channel}' to renderer window #${idx}`);
+        } else {
+          console.log(`LOGOUT DEBUG [SocketService]: Renderer window #${idx} is destroyed, skip.`);
         }
       });
     } catch (error) {
-      console.error('Error notifying renderer:', error);
+      console.error(`LOGOUT DEBUG [SocketService]: Error sending IPC '${channel}':`, error);
     }
   }
 

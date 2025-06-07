@@ -23,22 +23,48 @@ export function setupAuthSocketHandlers() {
     }
   });
 
-  // Đăng xuất
-  ipcMain.handle('auth:logout', async (_, { userId }: { userId: number }) => {
+  // Đăng xuất - xử lý cả hai format có thể nhận được: trực tiếp userId hoặc object { userId }
+  ipcMain.handle('auth:logout', async (_, data) => {
     const socket = getSocket();
     try {
+      console.log('LOGOUT DEBUG [Main Process]: auth:logout received data:', data);
+      
+      // Xác định userId từ nhiều format khác nhau
+      let userId;
+      if (typeof data === 'object' && data !== null && 'userId' in data) {
+        userId = Number(data.userId); // Format { userId: xxx }
+      } else if (typeof data === 'number' || typeof data === 'string') {
+        userId = Number(data); // Format trực tiếp userId
+      } else {
+        console.error('LOGOUT DEBUG [Main Process]: Invalid data format for logout:', data);
+        return { success: false, error: 'Định dạng dữ liệu đăng xuất không hợp lệ' };
+      }
+      
+      console.log(`LOGOUT DEBUG [Main Process]: Processed userId=${userId}, type=${typeof userId}`);
+      
+      // Kiểm tra kết nối
       if (!socket || !socket.connected) {
+        console.error('LOGOUT DEBUG [Main Process]: Socket not connected');
         return { success: false, error: 'Không thể kết nối đến máy chủ' };
       }
+      
+      console.log(`LOGOUT DEBUG [Main Process]: Sending logout to server for userId=${userId}`);
+      
+      // Gửi yêu cầu đăng xuất đến server
       return await new Promise<{ success: boolean; error?: string }>((resolve) => {
         socket.emit('auth:logout', { userId }, (response: { success: boolean; error?: string }) => {
+          console.log('LOGOUT DEBUG [Main Process]: Server response:', response);
           resolve(response);
         });
+        
+        // Timeout để tránh chờ mãi không phản hồi
         setTimeout(() => {
+          console.log('LOGOUT DEBUG [Main Process]: Timeout reached, forcing success response');
           resolve({ success: true });
         }, 3000);
       });
     } catch (error) {
+      console.error('LOGOUT DEBUG [Main Process]: Error in auth:logout handler:', error);
       return { success: false, error: 'Đã xảy ra lỗi khi đăng xuất' };
     }
   });
