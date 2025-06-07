@@ -33,7 +33,7 @@ const NotificationManager: React.FC<NotificationManagerProps> = ({
       console.error('[NotificationManager] ipcRenderer is undefined!');
       return;
     }
-    
+      
     // Lắng nghe sự kiện topup:completed từ main process
     const handleTopupCompleted = (_event: any, data: TopUpNotificationData) => {
       console.log('[NotificationManager] Renderer received topup:completed:', data);
@@ -42,13 +42,13 @@ const NotificationManager: React.FC<NotificationManagerProps> = ({
         const newBalance = (user.balance || 0) + data.transaction.amount;
         updateUser({ balance: newBalance });
         console.log(`[NotificationManager] Updating user balance from ${user.balance} to ${newBalance}`);
-        const notificationWithId: NotificationWithId = {
-          ...data,
-          id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
-        };
-        setNotifications(prev => [...prev, notificationWithId]);
+      const notificationWithId: NotificationWithId = {
+        ...data,
+        id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
+      };
+      setNotifications(prev => [...prev, notificationWithId]);
         if (typeof onBalanceUpdate === 'function' && data.transaction.amount) {
-          onBalanceUpdate(data.transaction.amount);
+        onBalanceUpdate(data.transaction.amount);
         }
       } else {
         console.log('[NotificationManager] Ignored topup notification - no user logged in or missing transaction');
@@ -133,14 +133,14 @@ const NotificationManager: React.FC<NotificationManagerProps> = ({
 
   return (
     <>
-      
+    
       {showDebug && (
         <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end space-y-2">
           <div className="text-xs text-gray-500 bg-white/80 p-2 rounded shadow flex flex-col items-end">
             <div>
-              {isConnected ? '🟢 Connected' : '🔴 Disconnected'} - Notifications: {notifications.length}
+            {isConnected ? '🟢 Connected' : '🔴 Disconnected'} - Notifications: {notifications.length}
               <br />
-              Status: {debugMessage}
+            Status: {debugMessage}
             </div>
             <button
               className="mt-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-md shadow transition-colors duration-200 flex items-center space-x-1"
@@ -157,16 +157,16 @@ const NotificationManager: React.FC<NotificationManagerProps> = ({
       {notifications.map((notification) => {
         console.log('[NotificationManager] Render notification:', notification);
         return (
-          <TopUpNotification
-            key={notification.id}
-            username={notification.transaction.username}
-            amount={notification.transaction.amount}
-            message={notification.transaction.description}
-            onClose={() => removeNotification(notification.id)}
-            autoClose={true}
-            autoCloseTime={5000}
-            isAdminView={false}
-          />
+        <TopUpNotification
+          key={notification.id}
+          username={notification.transaction.username}
+          amount={notification.transaction.amount}
+          message={notification.transaction.description}
+          onClose={() => removeNotification(notification.id)}
+          autoClose={true}
+          autoCloseTime={5000}
+          isAdminView={false}
+        />
         );
       })}
     </>

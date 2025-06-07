@@ -79,8 +79,8 @@ export function Login() {
           username: customer.username ?? customer.name ?? '',
           email: customer.email ?? '',
           balance: customer.balance ?? 0,
-          // Đảm bảo các trường mới luôn có giá trị, bất kể API có trả về hay không
-          timeRemaining: customer.timeRemaining ?? 3 * 60 * 60, // 3 giờ tính bằng giây
+          // Map from snake_case time_remaining to camelCase timeRemaining
+          time_remaining: customer.time_remaining ?? 0,
           rank: customer.rank ?? 'Pro Gamer',
           dailyStreak: customer.dailyStreak ?? 7
         };

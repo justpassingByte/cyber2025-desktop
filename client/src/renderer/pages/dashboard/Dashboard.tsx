@@ -22,52 +22,40 @@ import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../../components/ThemeProvider';
 import { useUserStore } from '../../context/UserContext';
 
-
-
-export function Dashboard() {
-  const user = useUserStore((state) => state.user);
-  const navigate = useNavigate();
+// Component con chuyên biệt để hiển thị thời gian
+// Chỉ component này sẽ re-render mỗi giây
+const SessionTimeDisplay = () => {
   const { theme } = useTheme();
-  const [username, setUsername] = React.useState('');
-  const [timeRemaining, setTimeRemaining] = React.useState(0);
-  const [balance, setBalance] = React.useState(0);
-  const [rank, setRank] = React.useState('');
-  const [dailyStreak, setDailyStreak] = React.useState(0);
+  // Selector này chỉ lấy time_remaining, nên nó chỉ trigger re-render khi giá trị này thay đổi
+  const timeRemaining = useUserStore((state) => state.user?.time_remaining ?? 0);
 
-  React.useEffect(() => {
-    if (!user) {
-      navigate('/'); // Nếu không có user, quay về login
-      return;
-    }
-    
-    // Log only once when component mounts or when user changes
-    console.log("Dashboard received user:", JSON.stringify(user));
-    
-    setUsername(user.username || 'User');
-    setBalance(user.balance || 0);
-    setTimeRemaining(user.timeRemaining || 0);
-    setRank(user.rank || 'New Gamer');
-    setDailyStreak(user.dailyStreak || 0);
-    
-    // Don't log every render - this contributes to console spam
-    // console.log("Dashboard state after setting values:", {...});
-  }, [user, navigate]);
-
-  // Format time remaining as HH:MM:SS
-  const formatTimeRemaining = () => {
-    const hours = Math.floor(timeRemaining / 3600);
-    const minutes = Math.floor((timeRemaining % 3600) / 60);
-    const seconds = timeRemaining % 60;
+  const formatTime = (timeInSeconds: number) => {
+    const hours = Math.floor(timeInSeconds / 3600);
+    const minutes = Math.floor((timeInSeconds % 3600) / 60);
+    const seconds = timeInSeconds % 60;
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   };
 
+  return (
+    <p className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
+      {formatTime(timeRemaining)}
+    </p>
+  );
+};
+
+export function Dashboard() {
+  // Lấy toàn bộ object user. Component này sẽ chỉ re-render khi các giá trị khác time_remaining thay đổi
+  // (ví dụ: balance) nhờ vào việc tách bộ đếm ra component riêng.
+  const user = useUserStore((state) => state.user);
+  const navigate = useNavigate();
+  const { theme } = useTheme();
+
   React.useEffect(() => {
-    if (timeRemaining <= 0) return;
-    const timer = setInterval(() => {
-      setTimeRemaining(prev => Math.max(0, prev - 1));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [timeRemaining]);
+    // Chỉ cần kiểm tra user tồn tại hay không. Không cần copy state vào local.
+    if (!user) {
+      navigate('/'); // Nếu không có user, quay về login
+    }
+  }, [user, navigate]);
 
   // Animation variants
   const containerVariants = {
@@ -82,9 +70,8 @@ export function Dashboard() {
     visible: { opacity: 1, y: 0 },
   };
 
+  // Nếu user chưa có, không render gì cả để chờ redirect
   if (!user) return null;
-
-  console.log('Dashboard user:', user);
 
   return (
     <div className="p-6 space-y-6">
@@ -93,7 +80,7 @@ export function Dashboard() {
         <h1 className={`text-4xl font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'} mb-2`}>
           Welcome back,{' '}
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-500 to-purple-500">
-            {username || 'User'}!
+            {user.username || 'User'}!
           </span>
         </h1>
         <p className={`${theme === 'dark' ? 'text-gray-300' : 'text-slate-600'} text-lg`}>
@@ -121,7 +108,7 @@ export function Dashboard() {
                     Current Balance
                   </p>
                   <p className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                    {(balance/1000).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}K VND
+                    {(user.balance/1000).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}K VND
                   </p>
                 </div>
                 <div className={`w-12 h-12 ${theme === 'dark' ? 'bg-cyan-500/20' : 'bg-cyan-500/10'} rounded-full flex items-center justify-center`}>
@@ -143,9 +130,8 @@ export function Dashboard() {
                   <p className={`${theme === 'dark' ? 'text-purple-400' : 'text-purple-700'} text-sm font-medium`}>
                     Session Time
                   </p>
-                  <p className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                    {formatTimeRemaining()}
-                  </p>
+                  {/* Sử dụng component con ở đây */}
+                  <SessionTimeDisplay />
                 </div>
                 <div className={`w-12 h-12 ${theme === 'dark' ? 'bg-purple-500/20' : 'bg-purple-500/10'} rounded-full flex items-center justify-center`}>
                   <Clock className={`w-6 h-6 ${theme === 'dark' ? 'text-purple-400' : 'text-purple-700'}`} />
@@ -167,7 +153,7 @@ export function Dashboard() {
                     Rank
                   </p>
                   <p className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                    {rank}
+                    {user.rank}
                   </p>
                 </div>
                 <div className={`w-12 h-12 ${theme === 'dark' ? 'bg-green-500/20' : 'bg-green-500/10'} rounded-full flex items-center justify-center`}>
@@ -190,7 +176,7 @@ export function Dashboard() {
                     Daily Streak
                   </p>
                   <p className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                    {dailyStreak} days
+                    {user.dailyStreak} days
                   </p>
                 </div>
                 <div className={`w-12 h-12 ${theme === 'dark' ? 'bg-orange-500/20' : 'bg-orange-500/10'} rounded-full flex items-center justify-center`}>

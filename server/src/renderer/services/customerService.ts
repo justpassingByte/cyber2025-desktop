@@ -40,6 +40,11 @@ interface CustomerFromDB {
   // Các trường khác từ database
 }
 
+interface FullCustomerFromDB extends CustomerFromDB {
+  total_spent: number;
+  hours_played: number;
+}
+
 interface TransactionFromDB {
   id: number;
   customer_id: number;
@@ -63,7 +68,9 @@ class CustomerService {
   // Lấy danh sách khách hàng (chỉ thông tin cơ bản)
   async getCustomers(): Promise<CustomerListItem[]> {
     try {
+      console.log('[customerService] Calling getCustomers API');
       const result = await ipcRenderer.invoke('customers:getAll');
+      console.log('[customerService] getCustomers response:', result);
       if (!result.success || !result.customers) {
         console.error('Failed to fetch customers:', result.error);
         return [];
@@ -113,7 +120,7 @@ class CustomerService {
         points: dbCustomer.points,
         address: dbCustomer.address || '',
         dob: dbCustomer.dob || '',
-        avatarUrl: dbCustomer.avatar_url || '',
+        avatarUrl: dbCustomer.avatar_url || '',   
       };
     } catch (error) {
       console.error('Error fetching customer detail:', error);
@@ -247,21 +254,9 @@ class CustomerService {
         limit: 1
       });
       if (logsResult.success && logsResult.logs && logsResult.logs.length > 0) {
-        const lastLogin = new Date(logsResult.logs[0].timestamp);
-        const now = new Date();
-        const diffMs = now.getTime() - lastLogin.getTime();
-        const diffMins = Math.floor(diffMs / (1000 * 60));
-        const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-        if (diffMins < 60) {
-          return `${diffMins} phút trước`;
-        } else if (diffHours < 24) {
-          return `${diffHours} giờ trước`;
-        } else {
-          return `${diffDays} ngày trước`;
-        }
+        return new Date(logsResult.logs[0].timestamp).toLocaleString('vi-VN');
       }
-      return 'Chưa hoạt động';
+      return 'Chưa từng đăng nhập';
     } catch (error) {
       console.error('Error getting last activity:', error);
       return 'Không xác định';
@@ -269,13 +264,48 @@ class CustomerService {
   }
 
   private determineStatus(customer: CustomerFromDB): 'active' | 'inactive' | 'suspended' {
-    if ('is_suspended' in customer && customer.is_suspended) {
+    if (customer.is_suspended) {
       return 'suspended';
     }
     if (customer.last_seen && customer.last_seen !== 'Chưa hoạt động') {
       return 'active';
     }
     return 'inactive';
+  }
+
+  // Lấy danh sách khách hàng với đầy đủ chi tiết
+  async getAllCustomerDetails(): Promise<CustomerDetail[]> {
+    try {
+      console.log('[customerService] Calling getAllCustomerDetails API');
+      const result = await ipcRenderer.invoke('customers:getAllDetails');
+      if (!result.success || !result.customers) {
+        console.error('Failed to fetch customer details:', result.error);
+        return [];
+      }
+      return result.customers.map((customer: FullCustomerFromDB) => {
+        const status = this.determineStatus(customer);
+        return {
+          id: customer.id.toString(),
+          name: customer.name,
+          email: customer.email || '',
+          phone: customer.phone || '',
+          status,
+          balance: customer.balance,
+          memberSince: new Date(customer.created_at).toLocaleDateString('vi-VN'),
+          lastSeen: customer.last_seen ? new Date(customer.last_seen).toLocaleString('vi-VN') : 'Chưa từng thấy',
+          totalSpent: customer.total_spent || 0,
+          hoursPlayed: customer.hours_played || 0,
+          level: this.calculateLevel(customer.points),
+          points: customer.points,
+          address: customer.address || '',
+          dob: customer.dob ? new Date(customer.dob).toLocaleDateString('vi-VN') : '',
+          avatarUrl: customer.avatar_url || '', 
+        };
+      });
+    } catch (error) {
+      console.error('Error fetching all customer details:', error);
+      return [];
+    }
   }
 }
 

@@ -1,6 +1,7 @@
 import { Server as HttpServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import { BrowserWindow } from 'electron';
+import sessionManagerService from './sessionManagerService';
 
 interface UserConnection {
   socketId: string;
@@ -108,8 +109,25 @@ class WebSocketService {
 
       // Handle customer linking
       socket.on('customer:link', (customerId: number) => {
-        this.customerSockets.set(customerId, socket.id);
-        console.log(`Customer ${customerId} linked to socket ${socket.id}`);
+        this.linkCustomerToSocket(customerId, socket.id);
+      });
+
+      // Handler mới để xác thực session
+      socket.on('auth:validate-session', async ({ userId }) => {
+        console.log(`[Socket] Received session validation request for user: ${userId}`);
+        // Kiểm tra xem user này có đang được theo dõi bởi SessionManager không
+        const customerSession = sessionManagerService.getActiveSession(userId);
+
+        if (customerSession) {
+          // Nếu có, trả về thông tin mới nhất
+          socket.emit('auth:validate-session-response', { 
+            isValid: true,
+            customer: customerSession.customer 
+          });
+        } else {
+          // Nếu không, trả về không hợp lệ
+          socket.emit('auth:validate-session-response', { isValid: false });
+        }
       });
     });
   }
@@ -213,12 +231,35 @@ class WebSocketService {
   // Gửi thông báo đến tất cả admin
   public emitToAdmins(event: string, data: any): void {
     if (!this.io || !this.connected) {
-      console.error('Socket.IO not initialized');
+      console.error('LOGOUT DEBUG [SocketService]: Cannot emit to admins - Socket.IO not initialized');
       return;
     }
 
+    console.log(`LOGOUT DEBUG [SocketService]: Emitting event '${event}' with data:`, JSON.stringify(data));
+    
+    // Test emitting a modified version of this event directly to renderer
+    if (event === 'admin:logout-notification') {
+      console.log('LOGOUT DEBUG [SocketService]: Also emitting test debug event');
+      try {
+        const testData = { ...data, isTestEvent: true };
+        this.notifyRenderer('test:debug-event', testData);
+        // Emit the original event directly via IPC too
+        this.notifyRenderer(event, data);
+      } catch (err) {
+        console.error('LOGOUT DEBUG [SocketService]: Error emitting test event:', err);
+      }
+    }
+    
+    // Kiểm tra số lượng client trong room 'admins'
+    const clients = this.io.sockets.adapter.rooms.get('admins');
+    console.log(`LOGOUT DEBUG [SocketService]: Number of clients in 'admins' room: ${clients ? clients.size : 0}`);
+    
     this.io.to('admins').emit(event, data);
-    console.log(`Emitted ${event} to all admins`);
+    console.log(`LOGOUT DEBUG [SocketService]: Emitted ${event} to all admins`);
+    
+    // Forward event tới renderer process qua IPC
+    console.log(`LOGOUT DEBUG [SocketService]: Forwarding event to renderer via notifyRenderer`);
+    this.notifyRenderer(event, data);
   }
 
   // Gửi thông báo đến tất cả clients
@@ -253,23 +294,46 @@ class WebSocketService {
     return [...this.userConnections];
   }
 
-  // Method to notify renderer process through BrowserWindow
-  private notifyRenderer(channel: string, data: any) {
+  // Gửi thông báo cho renderer process
+  private notifyRenderer(channel: string, data: any): void {
     try {
       const windows = BrowserWindow.getAllWindows();
-      windows.forEach(window => {
+      console.log(`LOGOUT DEBUG [SocketService]: Sending IPC '${channel}' to ${windows.length} renderer window(s) with data:`, JSON.stringify(data));
+      
+      if (windows.length === 0) {
+        console.log(`LOGOUT DEBUG [SocketService]: No renderer windows found!`);
+        return;
+      }
+      
+      windows.forEach((window, idx) => {
         if (!window.isDestroyed()) {
+          console.log(`LOGOUT DEBUG [SocketService]: Sending to window #${idx}, URL: ${window.webContents.getURL()}`);
           window.webContents.send(channel, data);
+          console.log(`LOGOUT DEBUG [SocketService]: Sent IPC '${channel}' to renderer window #${idx}`);
+        } else {
+          console.log(`LOGOUT DEBUG [SocketService]: Renderer window #${idx} is destroyed, skip.`);
         }
       });
     } catch (error) {
-      console.error('Error notifying renderer:', error);
+      console.error(`LOGOUT DEBUG [SocketService]: Error sending IPC '${channel}':`, error);
     }
   }
 
   // Check if socket server is connected
   isConnected(): boolean {
     return this.io !== null && !!this.io.engine?.clientsCount;
+  }
+
+  public linkCustomerToSocket(customerId: number, socketId: string): void {
+    this.customerSockets.set(customerId, socketId);
+    console.log(`Customer ${customerId} linked to socket ${socketId}`);
+  }
+
+  public unlinkCustomerSocket(customerId: number): void {
+    if (this.customerSockets.has(customerId)) {
+      this.customerSockets.delete(customerId);
+      console.log(`Customer ${customerId} link removed.`);
+    }
   }
 }
 

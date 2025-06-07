@@ -25,6 +25,9 @@ export class Customer {
   @Column({ default: 0 })
   balance: number;
 
+  @Column({ default: 0 })
+  time_remaining: number;
+
   @CreateDateColumn()
   created_at: Date;
   
