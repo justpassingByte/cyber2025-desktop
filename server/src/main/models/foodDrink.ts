@@ -23,6 +23,9 @@ export class FoodDrink {
   @Column({ nullable: true })
   image_url: string;
 
+  @Column({ type: 'float', nullable: true })
+  cost: number;
+
   @Column({ default: 0 })
   stock: number;
 

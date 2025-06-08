@@ -1,88 +1,39 @@
-import { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card"
 import { Button } from "../../components/ui/button"
 import { Badge } from "../../components/ui/badge"
 import { Input } from "../../components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "../../components/ui/tabs"
-import { User, Clock } from "lucide-react"
 import { useTheme } from "../../components/ThemeProvider"
+import CustomIcon from "../../components/ui/CustomIcon"
+// No longer directly importing requestFoodData or other socket functions for UI-triggered fetch
+// import { requestFoodData, onFoodDataReceived, offFoodDataReceived } from "../../../main/services/socket"
+
+// Get ipcRenderer
+const ipcRenderer = window.require ? window.require('electron').ipcRenderer : undefined;
+
+interface FoodItem {
+  id: number;
+  name: string;
+  description?: string;
+  price: number;
+  image_url?: string; // Changed to image_url to match backend
+  status: string;
+  category?: {
+    name: string;
+  };
+  rating?: number; // Assuming backend will provide this
+  prepTime?: string; // Assuming backend will provide this
+  popular?: boolean; // Assuming backend will provide this
+}
 
 const categories = [
-  { id: "all", name: "All Items", icon: User },
-  { id: "drinks", name: "Drinks", icon: User },
-  { id: "snacks", name: "Snacks", icon: User },
-  { id: "meals", name: "Meals", icon: User },
-  { id: "desserts", name: "Desserts", icon: User },
-]
-
-const menuItems = [
-  {
-    id: 1,
-    name: "Energy Drink",
-    description: "Boost your gaming performance",
-    price: 3.5,
-    category: "drinks",
-    image: "/placeholder.svg?height=200&width=200",
-    rating: 4.8,
-    prepTime: "2 min",
-    popular: true,
-  },
-  {
-    id: 2,
-    name: "Gaming Burger",
-    description: "Juicy beef burger with special sauce",
-    price: 12.99,
-    category: "meals",
-    image: "/placeholder.svg?height=200&width=200",
-    rating: 4.6,
-    prepTime: "15 min",
-    popular: true,
-  },
-  {
-    id: 3,
-    name: "Gamer Chips",
-    description: "Crunchy chips perfect for gaming",
-    price: 2.25,
-    category: "snacks",
-    image: "/placeholder.svg?height=200&width=200",
-    rating: 4.3,
-    prepTime: "1 min",
-    popular: false,
-  },
-  {
-    id: 4,
-    name: "Ice Cream Sundae",
-    description: "Cool down with our delicious sundae",
-    price: 5.75,
-    category: "desserts",
-    image: "/placeholder.svg?height=200&width=200",
-    rating: 4.7,
-    prepTime: "5 min",
-    popular: false,
-  },
-  {
-    id: 5,
-    name: "Coffee",
-    description: "Premium coffee to keep you alert",
-    price: 2.99,
-    category: "drinks",
-    image: "/placeholder.svg?height=200&width=200",
-    rating: 4.5,
-    prepTime: "3 min",
-    popular: false,
-  },
-  {
-    id: 6,
-    name: "Pizza Slice",
-    description: "Hot and cheesy pizza slice",
-    price: 4.5,
-    category: "meals",
-    image: "/placeholder.svg?height=200&width=200",
-    rating: 4.4,
-    prepTime: "8 min",
-    popular: true,
-  },
+  { id: "all", name: "All Items", icon: "UtensilsCrossed" }, // Using string for CustomIcon
+  { id: "drinks", name: "Drinks", icon: "Coffee" },
+  { id: "snacks", name: "Snacks", icon: "Popcorn" },
+  { id: "meals", name: "Meals", icon: "Burger" },
+  { id: "desserts", name: "Desserts", icon: "IceCream" },
 ]
 
 export default function FoodOrderPage() {
@@ -90,13 +41,44 @@ export default function FoodOrderPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [cart, setCart] = useState<{ [key: number]: number }>({})
   const [showCart, setShowCart] = useState(false)
+  const [foodItems, setFoodItems] = useState<FoodItem[]>([]) // State for real data
+  const [loading, setLoading] = useState<boolean>(true) // Loading state
   const { theme } = useTheme()
 
-  const filteredItems = menuItems.filter((item) => {
-    const matchesCategory = selectedCategory === "all" || item.category === selectedCategory
+  useEffect(() => {
+    const fetchFoodItems = async () => {
+      if (!ipcRenderer) {
+        console.error('ipcRenderer is not defined. Cannot fetch food data.');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        console.log('[Client UI] Invoking food:get-all IPC...');
+        const response = await ipcRenderer.invoke('food:get-all');
+        console.log('[Client UI] Response from food:get-all IPC:', response);
+
+        if (response.success && response.foods) {
+          setFoodItems(response.foods);
+        } else {
+          console.error('Failed to fetch food items:', response.error);
+        }
+      } catch (error) {
+        console.error('Error during food data fetch via IPC:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchFoodItems();
+  }, []); // Empty dependency array means this runs once on mount
+
+  const filteredItems = foodItems.filter((item) => {
+    const matchesCategory = selectedCategory === "all" || (item.category && item.category.name.toLowerCase() === selectedCategory.toLowerCase())
     const matchesSearch =
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.description.toLowerCase().includes(searchQuery.toLowerCase())
+      (item.description && item.description.toLowerCase().includes(searchQuery.toLowerCase()))
     return matchesCategory && matchesSearch
   })
 
@@ -125,7 +107,7 @@ export default function FoodOrderPage() {
 
   const getTotalPrice = () => {
     return Object.entries(cart).reduce((sum, [itemId, count]) => {
-      const item = menuItems.find((item) => item.id === Number.parseInt(itemId))
+      const item = foodItems.find((item) => item.id === Number.parseInt(itemId))
       return sum + (item?.price || 0) * count
     }, 0)
   }
@@ -148,7 +130,7 @@ export default function FoodOrderPage() {
           onClick={() => setShowCart(true)}
           className="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 relative"
         >
-          <User className="w-4 h-4 mr-2" />
+          <CustomIcon name="ShoppingCart" className="w-4 h-4 mr-2" />
           Cart
           {getTotalItems() > 0 && (
             <Badge className="absolute -top-2 -right-2 bg-red-500 text-white min-w-[20px] h-5 flex items-center justify-center text-xs">
@@ -166,7 +148,7 @@ export default function FoodOrderPage() {
         className="flex flex-col sm:flex-row gap-4"
       >
         <div className="relative flex-1">
-          <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <CustomIcon name="Search" className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
           <Input
             placeholder="Search food and drinks..."
             value={searchQuery}
@@ -188,7 +170,7 @@ export default function FoodOrderPage() {
                 value={category.id}
                 className="data-[state=active]:bg-cyan-500 flex items-center gap-2"
               >
-                <category.icon className="w-4 h-4" />
+                <CustomIcon name={category.icon as any} className="w-4 h-4" /> {/* Cast to any temporarily */}
                 {category.name}
               </TabsTrigger>
             ))}
@@ -203,97 +185,109 @@ export default function FoodOrderPage() {
         transition={{ delay: 0.3 }}
         className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
       >
-        {filteredItems.map((item, index) => (
-          <motion.div
-            key={item.id}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.1 }}
-          >
-            <Card className={`${theme === 'dark'
-              ? 'bg-slate-900/50 border-white/10 hover:border-cyan-500/30'
-              : 'bg-white/80 border-slate-200 hover:border-cyan-500/30'} 
-              backdrop-blur-lg transition-all duration-300 group`}>
-              <div className="relative">
-                <img
-                  src={item.image || "/placeholder.svg"}
-                  alt={item.name}
-                  className="w-full h-48 object-cover rounded-t-lg"
-                  width={400}
-                  height={192}
-                />
-                {item.popular && (
-                  <Badge className="absolute top-2 left-2 bg-orange-500 text-white">
-                    <User className="w-3 h-3 mr-1" />
-                    Popular
-                  </Badge>
-                )}
-                <div className="absolute top-2 right-2 bg-black/50 backdrop-blur-sm rounded-full px-2 py-1 flex items-center gap-1">
-                  <User className="w-3 h-3 text-yellow-400 fill-current" />
-                  <span className="text-white text-xs">{item.rating}</span>
+        {loading ? (
+          <div className="flex justify-center items-center col-span-full h-64">
+            <CustomIcon name="Loader2" className="h-10 w-10 animate-spin text-blue-500" />
+            <p className="ml-3 text-lg text-gray-600">Đang tải dữ liệu đồ ăn...</p>
+          </div>
+        ) : filteredItems.length === 0 ? (
+          <div className="text-center py-10 col-span-full text-gray-500">
+            <p className="text-xl font-semibold mb-2">Không tìm thấy đồ ăn nào</p>
+            <p>Hãy thử tìm kiếm với từ khóa khác hoặc thêm đồ ăn mới.</p>
+          </div>
+        ) : (
+          filteredItems.map((item, index) => (
+            <motion.div
+              key={item.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: index * 0.1 }}
+            >
+              <Card className={`${theme === 'dark'
+                ? 'bg-slate-900/50 border-white/10 hover:border-cyan-500/30'
+                : 'bg-white/80 border-slate-200 hover:border-cyan-500/30'} 
+                backdrop-blur-lg transition-all duration-300 group`}>
+                <div className="relative">
+                  <img
+                    src={item.image_url || "/placeholder.svg"}
+                    alt={item.name}
+                    className="w-full h-48 object-cover rounded-t-lg"
+                    width={400}
+                    height={192}
+                  />
+                  {item.popular && (
+                    <Badge className="absolute top-2 left-2 bg-orange-500 text-white">
+                      <CustomIcon name="Star" className="w-3 h-3 mr-1" />
+                      Popular
+                    </Badge>
+                  )}
+                  <div className="absolute top-2 right-2 bg-black/50 backdrop-blur-sm rounded-full px-2 py-1 flex items-center gap-1">
+                    <CustomIcon name="Star" className="w-3 h-3 text-yellow-400 fill-current" />
+                    <span className="text-white text-xs">{item.rating || "N/A"}</span>
+                  </div>
                 </div>
-              </div>
 
-              <CardHeader className="pb-2">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <CardTitle className={`${theme === 'dark' ? 'text-white' : 'text-slate-900'} text-lg`}>{item.name}</CardTitle>
-                    <CardDescription className={`${theme === 'dark' ? 'text-gray-400' : 'text-slate-500'} text-sm`}>{item.description}</CardDescription>
+                <CardHeader className="pb-2">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <CardTitle className={`${theme === 'dark' ? 'text-white' : 'text-slate-900'} text-lg`}>{item.name}</CardTitle>
+                      <CardDescription className={`${theme === 'dark' ? 'text-gray-400' : 'text-slate-500'} text-sm`}>{item.description}</CardDescription>
+                    </div>
+                    <div className="text-right">
+                      <p className={`${theme === 'dark' ? 'text-cyan-400' : 'text-cyan-700'} font-bold text-lg`}>${item.price}</p>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className={`${theme === 'dark' ? 'text-cyan-400' : 'text-cyan-700'} font-bold text-lg`}>${item.price}</p>
-                  </div>
-                </div>
-              </CardHeader>
+                </CardHeader>
 
-              <CardContent className="pt-0">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1 text-gray-400 text-sm">
-                    <Clock className="w-4 h-4" />
-                    {item.prepTime}
-                  </div>
+                <CardContent className="pt-0">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1 text-gray-400 text-sm">
+                      <CustomIcon name="Clock" className="w-4 h-4" />
+                      {item.prepTime || "N/A"}
+                    </div>
 
-                  <div className="flex items-center gap-2">
-                    {cart[item.id] ? (
-                      <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2">
+                      {cart[item.id] ? (
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => removeFromCart(item.id)}
+                            className={`w-8 h-8 p-0 ${theme === 'dark' 
+                              ? 'border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20'
+                              : 'border-cyan-600/30 text-cyan-700 hover:bg-cyan-500/10'}`}
+                          >
+                            <CustomIcon name="Minus" className="w-4 h-4" />
+                          </Button>
+                          <span className={`${theme === 'dark' ? 'text-white' : 'text-slate-900'} font-medium w-8 text-center`}>{cart[item.id]}</span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => addToCart(item.id)}
+                            className={`w-8 h-8 p-0 ${theme === 'dark' 
+                              ? 'border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20'
+                              : 'border-cyan-600/30 text-cyan-700 hover:bg-cyan-500/10'}`}
+                          >
+                            <CustomIcon name="Plus" className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ) : (
                         <Button
                           size="sm"
-                          variant="outline"
-                          onClick={() => removeFromCart(item.id)}
-                          className={`w-8 h-8 p-0 ${theme === 'dark' 
-                            ? 'border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20'
-                            : 'border-cyan-600/30 text-cyan-700 hover:bg-cyan-500/10'}`}
-                        >
-                          <User className="w-4 h-4" />
-                        </Button>
-                        <span className={`${theme === 'dark' ? 'text-white' : 'text-slate-900'} font-medium w-8 text-center`}>{cart[item.id]}</span>
-                        <Button
-                          size="sm"
-                          variant="outline"
                           onClick={() => addToCart(item.id)}
-                          className={`w-8 h-8 p-0 ${theme === 'dark' 
-                            ? 'border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20'
-                            : 'border-cyan-600/30 text-cyan-700 hover:bg-cyan-500/10'}`}
+                          className="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600"
                         >
-                          <User className="w-4 h-4" />
+                          <CustomIcon name="Plus" className="w-4 h-4 mr-1" />
+                          Add
                         </Button>
-                      </div>
-                    ) : (
-                      <Button
-                        size="sm"
-                        onClick={() => addToCart(item.id)}
-                        className="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600"
-                      >
-                        <User className="w-4 h-4 mr-1" />
-                        Add
-                      </Button>
-                    )}
+                      )}
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
+                </CardContent>
+              </Card>
+            </motion.div>
+          ))
+        )}
       </motion.div>
 
       {/* Cart Sidebar */}
@@ -324,19 +318,19 @@ export default function FoodOrderPage() {
                     onClick={() => setShowCart(false)}
                     className={`${theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-slate-400 hover:text-slate-900'}`}
                   >
-                    ×
+                    <CustomIcon name="X" className="w-4 h-4" />
                   </Button>
                 </div>
 
                 <div className="flex-1 overflow-y-auto space-y-4">
                   {Object.entries(cart).map(([itemId, count]) => {
-                    const item = menuItems.find((item) => item.id === Number.parseInt(itemId))
+                    const item = foodItems.find((item) => item.id === Number.parseInt(itemId))
                     if (!item) return null
 
                     return (
                       <div key={itemId} className={`flex items-center gap-3 ${theme === 'dark' ? 'bg-white/5' : 'bg-slate-100'} rounded-lg p-3`}>
                         <img
-                          src={item.image || "/placeholder.svg"}
+                          src={item.image_url || "/placeholder.svg"}
                           alt={item.name}
                           className="w-12 h-12 object-cover rounded"
                           width={48}
@@ -355,7 +349,7 @@ export default function FoodOrderPage() {
                               ? 'border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20'
                               : 'border-cyan-600/30 text-cyan-700 hover:bg-cyan-500/10'}`}
                           >
-                            <User className="w-4 h-4" />
+                            <CustomIcon name="Minus" className="w-4 h-4" />
                           </Button>
                           <span className={`${theme === 'dark' ? 'text-white' : 'text-slate-900'} font-medium w-8 text-center`}>{count}</span>
                           <Button
@@ -366,7 +360,7 @@ export default function FoodOrderPage() {
                               ? 'border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20'
                               : 'border-cyan-600/30 text-cyan-700 hover:bg-cyan-500/10'}`}
                           >
-                            <User className="w-4 h-4" />
+                            <CustomIcon name="Plus" className="w-4 h-4" />
                           </Button>
                         </div>
                       </div>
@@ -375,7 +369,7 @@ export default function FoodOrderPage() {
 
                   {Object.keys(cart).length === 0 && (
                     <div className="text-center py-8">
-                      <User className={`w-12 h-12 ${theme === 'dark' ? 'text-gray-400' : 'text-slate-400'} mx-auto mb-4`} />
+                      <CustomIcon name="ShoppingCart" className={`w-12 h-12 ${theme === 'dark' ? 'text-gray-400' : 'text-slate-400'} mx-auto mb-4`} />
                       <p className={`${theme === 'dark' ? 'text-gray-400' : 'text-slate-500'}`}>Your cart is empty</p>
                     </div>
                   )}

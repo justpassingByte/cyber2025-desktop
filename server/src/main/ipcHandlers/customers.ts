@@ -179,8 +179,7 @@ export function registerCustomerHandlers() {
 
   ipcMain.handle('customers:getById', async (event, id) => {
     try {
-      const customerRepo = database.getRepository(Customer);
-      const customer = await customerRepo.findOne({ where: { id } });
+      const customer = await getFullCustomerDetails(id);
       
       if (!customer) {
         return { success: false, error: 'Customer not found' };

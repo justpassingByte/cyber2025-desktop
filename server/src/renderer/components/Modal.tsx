@@ -91,7 +91,7 @@ const Modal: React.FC<ModalProps> = ({ open, onClose, children, title, widthClas
             )}
             
             <motion.div 
-              className="px-6 pb-6 pt-3"
+              className="px-6 pb-6 pt-3 overflow-y-auto max-h-[calc(80vh-120px)]"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.3, delay: 0.2 }}

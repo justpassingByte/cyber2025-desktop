@@ -2,6 +2,8 @@ import { Server as HttpServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import { BrowserWindow } from 'electron';
 import sessionManagerService from './sessionManagerService';
+import database from '../services/database';
+import { FoodDrink } from '../models';
 
 interface UserConnection {
   socketId: string;
@@ -127,6 +129,20 @@ class WebSocketService {
         } else {
           // Nếu không, trả về không hợp lệ
           socket.emit('auth:validate-session-response', { isValid: false });
+        }
+      });
+
+      // Handle food data request
+      socket.on('food:request-all', async () => {
+        console.log(`[Server Socket] Received food:request-all from socket: ${socket.id}`);
+        try {
+          const foodDrinkRepo = database.getRepository(FoodDrink);
+          const foods = await foodDrinkRepo.find({ relations: ['menuCategory'] });
+          socket.emit('food:receive-all', { success: true, foods });
+          console.log('Emitted food:receive-all to socket:', socket.id);
+        } catch (error) {
+          console.error('Error fetching food items for socket request:', error);
+          socket.emit('food:receive-all', { success: false, error: 'Không thể lấy danh sách đồ ăn' });
         }
       });
     });

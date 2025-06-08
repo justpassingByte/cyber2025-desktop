@@ -26,10 +26,10 @@ import RoomPage from './pages/room/Room';
 import GamesPage from './pages/games/Games';
 import CustomersPage from './pages/customers/Customers';
 import FoodPage from './pages/foods/Foods';
-import { useCustomerStore } from './stores/customerStore';
 import { Avatar, AvatarFallback } from './components/ui/avatar';
 import { Badge } from './components/ui/badge';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useNotificationStore } from './stores/notificationStore';
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
@@ -124,6 +124,7 @@ const SidebarContent = ({ pathname, onClose }: { pathname: string; onClose?: () 
 const MainLayout = () => {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { unreadCount, resetNotificationCount } = useNotificationStore();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
@@ -171,9 +172,13 @@ const MainLayout = () => {
                </h1>
              </div>
              <div className="flex items-center gap-x-4 lg:gap-x-6">
-               <Button variant="ghost" size="icon" className="relative">
+               <Button variant="ghost" size="icon" className="relative" onClick={resetNotificationCount}>
                  <Bell className="h-5 w-5" />
-                 <Badge className="absolute -top-1 -right-1 bg-red-500 text-white min-w-[16px] h-4 flex items-center justify-center text-xs">3</Badge>
+                 {unreadCount > 0 && (
+                   <Badge className="absolute -top-1 -right-1 bg-red-500 text-white min-w-[16px] h-4 flex items-center justify-center text-xs">
+                     {unreadCount}
+                   </Badge>
+                 )}
                </Button>
              </div>
            </div>
