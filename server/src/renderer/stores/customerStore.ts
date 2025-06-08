@@ -14,7 +14,7 @@ interface CustomerState {
   deleteCustomer: (customerId: string | number) => void;
   updateCustomerStatus: (customerId: string | number, status: CustomerStatus) => void;
   updateCustomerSession: (customerId: string | number, data: { time_remaining: number; balance: number }) => void;
-  getCustomerById: (customerId: string | number) => CustomerDetail | undefined;
+  getCustomerById: (customerId: string | number) => CustomerDetail | null;
 }
 
 export const useCustomerStore = create<CustomerState>((set, get) => ({
@@ -73,7 +73,7 @@ export const useCustomerStore = create<CustomerState>((set, get) => ({
   },
   getCustomerById: (customerId) => {
     const idStr = customerId.toString();
-    return get().customers.find(c => c.id === idStr);
+    return get().customers.find(c => c.id === idStr) || null;
   }
 }));
 

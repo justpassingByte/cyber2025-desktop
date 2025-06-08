@@ -112,6 +112,7 @@ const CustomerDetails = ({ customer, onTopup, onResetPassword, onEdit, onDelete 
   onEdit: () => void,
   onDelete: () => void
 }) => {
+  console.log('[CustomerDetails] Rendered with customer:', customer);
   const [showAccountActions, setShowAccountActions] = useState(false);
   const [activityLogs, setActivityLogs] = useState<any[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
@@ -717,11 +718,12 @@ const ConnectionMonitor = () => {
 };
 
 const Customers = () => {
-  console.log('[Customers.tsx] Customers component rendered with Zustand');
+  console.log('[Customers.tsx] Customers component rendered');
   const { customers, loading: customersLoading, getCustomerById } = useCustomerStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<'all' | 'active' | 'suspended' | 'inactive'>('all');
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const [currentSelectedCustomer, setCurrentSelectedCustomer] = useState<CustomerDetail | null>(null);
   const [modalAdd, setModalAdd] = useState(false);
   const [modalTopup, setModalTopup] = useState(false);
   const [topupAmount, setTopupAmount] = useState('');
@@ -749,11 +751,6 @@ const Customers = () => {
   });
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
-
-  const selectedCustomer = useMemo(() => {
-    if (!selectedCustomerId) return null;
-    return getCustomerById(selectedCustomerId) || null;
-  }, [selectedCustomerId, getCustomerById, customers]);
 
   const activeCustomers = useMemo(() => customers.filter(c => c.status === 'active').length, [customers]);
   
@@ -784,24 +781,25 @@ const Customers = () => {
   // When a customer from the list is clicked, get full details
   const handleSelectCustomer = (customer: CustomerDetail) => {
     setSelectedCustomerId(customer.id);
+    setCurrentSelectedCustomer(customer);
   };
 
   // Update edit form when selected customer changes
   useEffect(() => {
-    if (selectedCustomer) {
+    if (currentSelectedCustomer) {
       setEditCustomerForm({
-        name: selectedCustomer.name,
-        email: selectedCustomer.email,
-        phone: selectedCustomer.phone || '',
-        address: selectedCustomer.address || '',
-        dob: selectedCustomer.dob || '',
-        status: selectedCustomer.status as CustomerStatus
+        name: currentSelectedCustomer.name,
+        email: currentSelectedCustomer.email,
+        phone: currentSelectedCustomer.phone || '',
+        address: currentSelectedCustomer.address || '',
+        dob: currentSelectedCustomer.dob || '',
+        status: currentSelectedCustomer.status as CustomerStatus
       });
     }
-  }, [selectedCustomer]);
+  }, [currentSelectedCustomer]);
 
   const handleTopup = async () => {
-    if (!selectedCustomer) return;
+    if (!currentSelectedCustomer) return;
     const amount = parseInt(topupAmount, 10);
     if (isNaN(amount) || amount <= 0) return;
     
@@ -811,9 +809,9 @@ const Customers = () => {
     
     try {
       const result = await ipcRenderer.invoke('process-topup', {
-        username: selectedCustomer.name,
+        username: currentSelectedCustomer.name,
         amount: amount,
-        message: `Nạp tiền từ admin cho ${selectedCustomer.name}`
+        message: `Nạp tiền từ admin cho ${currentSelectedCustomer.name}`
       });
       
       if (result && result.success) {
@@ -837,9 +835,9 @@ const Customers = () => {
 
   // Hàm reset password
   const handleResetPassword = async () => {
-    if (!selectedCustomer) return;
+    if (!currentSelectedCustomer) return;
     try {
-      const result = await ipcRenderer.invoke('customers:resetPassword', selectedCustomer.id);
+      const result = await ipcRenderer.invoke('customers:resetPassword', currentSelectedCustomer.id);
       if (result && result.success) {
         setNotification({ type: 'success', message: 'Đã đặt lại mật khẩu về "1"' });
       } else {
@@ -852,14 +850,14 @@ const Customers = () => {
 
   // Xử lý khi nhấn nút Edit
   const handleEditModal = () => {
-    if (selectedCustomer) {
+    if (currentSelectedCustomer) {
       setEditCustomerForm({
-        name: selectedCustomer.name,
-        email: selectedCustomer.email,
-        phone: selectedCustomer.phone || '',
-        address: selectedCustomer.address || '',
-        dob: selectedCustomer.dob || '',
-        status: selectedCustomer.status as CustomerStatus
+        name: currentSelectedCustomer.name,
+        email: currentSelectedCustomer.email,
+        phone: currentSelectedCustomer.phone || '',
+        address: currentSelectedCustomer.address || '',
+        dob: currentSelectedCustomer.dob || '',
+        status: currentSelectedCustomer.status as CustomerStatus
       });
       setModalEdit(true);
     }
@@ -868,12 +866,12 @@ const Customers = () => {
   // Xử lý khi lưu chỉnh sửa
   const handleSaveCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedCustomer) return;
+    if (!currentSelectedCustomer) return;
     
     try {
       // Gọi IPC để cập nhật thông tin khách hàng
       const result = await ipcRenderer.invoke('customers:update', 
-        selectedCustomer.id, 
+        currentSelectedCustomer.id, 
         editCustomerForm
       );
       
@@ -892,12 +890,12 @@ const Customers = () => {
 
   // Xử lý khi xác nhận xóa khách hàng
   const handleDeleteCustomer = async () => {
-    if (!selectedCustomer) return;
+    if (!currentSelectedCustomer) return;
     setIsDeleting(true);
     
     try {
       // Gọi IPC để xóa khách hàng
-      const result = await ipcRenderer.invoke('customers:delete', selectedCustomer.id);
+      const result = await ipcRenderer.invoke('customers:delete', currentSelectedCustomer.id);
       
       if (result && result.success) {
         // Store sẽ xử lý việc xóa. UI sẽ tự cập nhật.
@@ -953,7 +951,7 @@ const Customers = () => {
     console.log('[DEBUG] Danh sách khách hàng đang hoạt động:', 
       customers.filter(c => c.status === 'active').map(c => ({ id: c.id, name: c.name })));
     console.log('[DEBUG] Selected customer ID:', selectedCustomerId);
-    console.log('[DEBUG] Selected customer data from store:', selectedCustomer);
+    console.log('[DEBUG] Current selected customer data:', currentSelectedCustomer);
     console.log('[DEBUG] ================================');
 
     // Hiển thị thông báo trạng thái cho người dùng
@@ -989,6 +987,28 @@ const Customers = () => {
       
       return () => {
         ipcRenderer.removeListener('socket:status', handleSocketStatus);
+      };
+    }
+  }, []);
+
+  // Listen for customer created event to automatically select the new customer
+  useEffect(() => {
+    if (window.require) {
+      const { ipcRenderer } = window.require('electron');
+      
+      const handleCustomerCreatedSelect = (_event: any, data: { customer: CustomerDetail }) => {
+        if (data.customer && data.customer.id) {
+          setSelectedCustomerId(data.customer.id);
+          setCurrentSelectedCustomer(data.customer);
+          console.log('[Customers] Automatically selected newly created customer via IPC. ID:', data.customer.id);
+          setNotification({ type: 'success', message: `Đã tạo khách hàng mới: ${data.customer.name}` });
+        }
+      };
+
+      ipcRenderer.on('customer:created', handleCustomerCreatedSelect);
+      
+      return () => {
+        ipcRenderer.removeListener('customer:created', handleCustomerCreatedSelect);
       };
     }
   }, []);
@@ -1177,14 +1197,14 @@ const Customers = () => {
               <CardContent className="p-0">
                 <AnimatePresence>
                   <motion.div
-                    key={selectedCustomer?.id || 'empty'}
+                    key={currentSelectedCustomer?.id || 'empty'}
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.3 }}
                   >
                     <CustomerDetails 
-                      customer={selectedCustomer} 
+                      customer={currentSelectedCustomer} 
                       onTopup={() => setModalTopup(true)} 
                       onResetPassword={handleResetPassword}
                       onEdit={handleEditModal}
@@ -1279,6 +1299,7 @@ const Customers = () => {
               if (result && result.success) {
                 setModalAdd(false);
                 setNotification({ type: 'success', message: `Đã tạo khách hàng mới: ${username}` });
+                console.log('[Customers] Newly created customer. Waiting for store update via IPC.');
               } else {
                 setNotification({ type: 'error', message: result.error || 'Lỗi: Không thể tạo khách hàng mới' });
               }
@@ -1336,7 +1357,7 @@ const Customers = () => {
         </form>
         </motion.div>
       </Modal>
-      <Modal open={modalTopup} onClose={() => setModalTopup(false)} title={`Nạp tiền cho ${selectedCustomer?.name || 'khách hàng'}`}>
+      <Modal open={modalTopup} onClose={() => setModalTopup(false)} title={`Nạp tiền cho ${currentSelectedCustomer?.name || 'khách hàng'}`}>
         <form onSubmit={e => { e.preventDefault(); handleTopup(); }} className="space-y-5">
           <div>
             <label htmlFor="topup-amount" className="block text-sm font-medium text-gray-700 mb-1">
@@ -1428,7 +1449,7 @@ const Customers = () => {
           )}
         </form>
       </Modal>
-      <Modal open={modalEdit} onClose={() => setModalEdit(false)} title={`Chỉnh sửa thông tin: ${selectedCustomer?.name}`}>
+      <Modal open={modalEdit} onClose={() => setModalEdit(false)} title={`Chỉnh sửa thông tin: ${currentSelectedCustomer?.name}`}>
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1550,7 +1571,7 @@ const Customers = () => {
               <Trash2 className="w-8 h-8 text-red-600" />
             </div>
             <p className="mb-4 text-gray-700">
-              Bạn có chắc chắn muốn xóa khách hàng <span className="font-semibold">{selectedCustomer?.name}</span>?
+              Bạn có chắc chắn muốn xóa khách hàng <span className="font-semibold">{currentSelectedCustomer?.name}</span>?
               <br />
               <span className="text-sm text-gray-500">Thao tác này không thể hoàn tác.</span>
             </p>
@@ -1606,7 +1627,7 @@ const Customers = () => {
             console.log('[DEBUG] Danh sách khách hàng đang hoạt động:', 
               customers.filter(c => c.status === 'active').map(c => ({ id: c.id, name: c.name })));
             console.log('[DEBUG] Selected customer ID:', selectedCustomerId);
-            console.log('[DEBUG] Selected customer from store:', selectedCustomer);
+            console.log('[DEBUG] Current selected customer data:', currentSelectedCustomer);
             console.log('[DEBUG] ================================');
         
             // Hiển thị thông báo trạng thái cho người dùng

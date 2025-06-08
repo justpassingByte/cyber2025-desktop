@@ -1,7 +1,6 @@
 import { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain } from 'electron';
 import * as path from 'path';
-// import * as socketIO from 'socket.io-client'; // Xóa dòng này
-import { setupSocketClient, isConnected, getSocket } from './services/socket';
+import { setupSocketClient, isConnected, getSocket, requestFoodData } from './services/socket';
 import { setupAllAuthHandlers } from './services/authSocket';
 import { setupNotiSocketHandlers } from './services/notiSocket';
 import { setupSessionSocketHandlers } from './services/sessionSocket';
@@ -16,28 +15,42 @@ import authService from './services/auth';
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
-// let socket: socketIO.Socket | null = null; // Xóa dòng này
-// let isSocketConnected = false; // Xóa dòng này
 
 // Thiết lập IPC handlers để xử lý các yêu cầu từ renderer process
 function setupIpcHandlers() {
   // Kiểm tra trạng thái kết nối socket
   ipcMain.handle('socket:check-connection', () => {
-    return isConnected();
+    const connectedStatus = isConnected();
+    console.log(`[main.ts] IPC 'socket:check-connection' invoked. Returning: ${connectedStatus}`);
+    return connectedStatus;
   });
-  
-  // Thử kết nối lại socket
-  ipcMain.handle('socket:reconnect', () => {
+
+  ipcMain.handle('socket:register-user', async (_event, userId: number) => {
     try {
       const socket = getSocket();
-      if (socket && !socket.connected) {
-        socket.connect();
-        return socket.connected;
+      if (!socket || !socket.connected) {
+        console.warn('[main.ts] Socket not connected, cannot register user.');
+        return false;
       }
-      return isConnected();
+      socket.emit('customer:link', userId);
+      console.log('[main.ts] Đã gửi customer:link lên server với userId:', userId);
+      return true;
     } catch (error) {
-      console.error('Socket reconnect error:', error);
+      console.error('Error registering user via IPC in main process:', error);
       return false;
+    }
+  });
+
+  // Handle food data requests from renderer
+  ipcMain.handle('food:get-all', async () => {
+    try {
+      console.log(`[main.ts] IPC 'food:get-all' invoked by renderer.`);
+      const foodData = await requestFoodData();
+      console.log(`[main.ts] IPC 'food:get-all' returning data.`);
+      return { success: true, foods: foodData };
+    } catch (error: any) {
+      console.error('[main.ts] Error fetching food data via IPC:', error);
+      return { success: false, error: error.message };
     }
   });
 }
@@ -84,9 +97,9 @@ function createWindow() {
 
     // and load the index.html of the app.
     if (isDev && !app.isPackaged) {
-      // In development, load from the dev server
-      console.log('Loading from dev server at http://localhost:3001');
-      mainWindow.loadURL('http://localhost:3001');
+      // In development, load from the dev server (usually 3000 for client)
+      console.log('Loading from dev server at http://localhost:3000');
+      mainWindow.loadURL('http://localhost:3000'); // Assuming client's dev server is on port 3000
       // Open the DevTools.
       mainWindow.webContents.openDevTools();
     } else {

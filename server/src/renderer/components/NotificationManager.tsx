@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import TopUpNotification from './TopUpNotification';
 import LoginNotification from './LoginNotification';
+import FoodOrderNotification from './FoodOrderNotification';
+import { useNotificationStore } from '../stores/notificationStore';
 
 interface TopUpEvent {
   id: string;
@@ -25,7 +27,7 @@ interface LoginEvent {
 
 interface Notification {
   id: string;
-  type: 'topup' | 'login';
+  type: 'topup' | 'login' | 'food-order';
   data: any;
 }
 
@@ -40,6 +42,7 @@ const NotificationManager: React.FC<NotificationManagerProps> = ({
 }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isConnected, setIsConnected] = useState(false);
+  const { incrementNotificationCount, decrementNotificationCount } = useNotificationStore();
 
   // Get ipcRenderer
   const ipcRenderer = window.require ? window.require('electron').ipcRenderer : undefined;
@@ -117,6 +120,32 @@ const NotificationManager: React.FC<NotificationManagerProps> = ({
         setNotifications(prev => [...prev, notification]);
     };
 
+    // Handle food order notifications (admin only)
+    const handleFoodOrderNotification = (_event: any, data: any) => {
+      if (!isAdmin) return;
+
+      console.log('Received food order notification:', data);
+
+      const foodOrderEvent = {
+        id: `food-order-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        customerName: data.customerName,
+        foodItems: data.foodItems,
+        totalAmount: data.totalAmount,
+        timestamp: Date.now(),
+      };
+
+      const notification = {
+        id: foodOrderEvent.id,
+        type: 'food-order' as const,
+        data: foodOrderEvent,
+      };
+
+      setNotifications((prev) => {
+        incrementNotificationCount();
+        return [...prev, notification];
+      });
+    };
+
     // Register for socket status changes
     ipcRenderer.on('socket:status', (_event: any, connected: boolean) => {
       setIsConnected(connected);
@@ -127,6 +156,7 @@ const NotificationManager: React.FC<NotificationManagerProps> = ({
     ipcRenderer.on('admin:customer-login', handleLoginNotification);
     if (isAdmin) {
       ipcRenderer.on('admin:topup-notification', handleTopupNotification);
+      ipcRenderer.on('admin:food-order-placed', handleFoodOrderNotification); // Register food order event
     }
 
     // Cleanup event listeners
@@ -136,12 +166,19 @@ const NotificationManager: React.FC<NotificationManagerProps> = ({
       ipcRenderer.removeListener('admin:customer-login', handleLoginNotification);
       if (isAdmin) {
         ipcRenderer.removeListener('admin:topup-notification', handleTopupNotification);
+        ipcRenderer.removeListener('admin:food-order-placed', handleFoodOrderNotification); // Cleanup food order event
       }
     };
-  }, [ipcRenderer, username, isAdmin]);
+  }, [ipcRenderer, username, isAdmin, incrementNotificationCount]);
 
   const removeNotification = (id: string) => {
-    setNotifications(prev => prev.filter(notification => notification.id !== id));
+    setNotifications(prev => prev.filter(notification => {
+      if (notification.id === id) {
+        decrementNotificationCount();
+        return false;
+      }
+      return true;
+    }));
   };
 
   return (
@@ -169,6 +206,20 @@ const NotificationManager: React.FC<NotificationManagerProps> = ({
               key={notification.id}
               customer={loginData.customer}
               timestamp={loginData.timestamp}
+              onClose={() => removeNotification(notification.id)}
+              autoClose={true}
+              autoCloseTime={5000}
+            />
+          );
+        } else if (notification.type === 'food-order' && isAdmin) {
+          const foodOrderData = notification.data;
+          return (
+            <FoodOrderNotification
+              key={notification.id}
+              customerName={foodOrderData.customerName}
+              foodItems={foodOrderData.foodItems}
+              totalAmount={foodOrderData.totalAmount}
+              timestamp={foodOrderData.timestamp}
               onClose={() => removeNotification(notification.id)}
               autoClose={true}
               autoCloseTime={5000}

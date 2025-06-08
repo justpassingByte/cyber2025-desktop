@@ -2,6 +2,10 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import * as path from 'path';
 import { Server } from 'socket.io';
 import 'reflect-metadata';
+import express from 'express';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 // Import services
 import database from './services/database';
@@ -22,6 +26,8 @@ import { registerLogHandlers } from './ipcHandlers/logs';
 import { registerTransactionHandlers } from './ipcHandlers/transactions';
 import { registerAuthHandlers } from './ipcHandlers/auth';
 import { registerSocketHandlers } from './ipcHandlers/socket';
+import { registerFoodHandlers } from './ipcHandlers/foods';
+import { setupImageHandlers } from './ipcHandlers/image';
 
 // Import auto login script
 import './adminAutoLogin';
@@ -168,11 +174,25 @@ async function initServices() {
     registerLogHandlers();
     registerTransactionHandlers();
     registerAuthHandlers();
+    registerFoodHandlers();
+    setupImageHandlers();
     console.log('### AUTH HANDLERS REGISTERED SUCCESSFULLY ###');
     registerSocketHandlers();
     
     // Start the session manager
     sessionManagerService.start();
+
+    // Setup Express server for static files
+    const expressApp = express();
+    // Define the static files path (should be the server's public folder)
+    const staticFilesPath = path.join(__dirname, '..', '..', 'public');
+    console.log(`[ExpressServer] Serving static files from ABSOLUTE PATH: ${staticFilesPath}`);
+    expressApp.use('/', express.static(staticFilesPath)); // Serve the public folder from the root of the web server
+    
+    const HTTP_PORT = 3001;
+    expressApp.listen(HTTP_PORT, () => {
+      console.log(`Express static file server listening on port ${HTTP_PORT}`);
+    });
 
     // Log application startup
     await systemLogService.log(

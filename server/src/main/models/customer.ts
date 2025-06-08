@@ -31,7 +31,7 @@ export class Customer {
   @CreateDateColumn()
   created_at: Date;
   
-  @Column({ default: 'active' })
+  @Column({ default: 'inactive' })
   status: string;
   
   @Column({ nullable: true })
